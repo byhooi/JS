@@ -1,11 +1,11 @@
 // ==UserScript==
-// @name         卧龙资源复制全部
+// @name         卧龙资源复制全部按钮
 // @version      2024-06-04
 // @description  卧龙资源修复复制全部按钮
 // @author       byhooi
 // @match        https://wolongzy.cc/.*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=wolongzy.cc
-// @grant        none
+
 // ==/UserScript==
 
 (function() {

@@ -1,12 +1,11 @@
 // ==UserScript==
 // @name         极速资源复制按钮
-// @namespace    http://tampermonkey.net/
 // @version      1.0
 // @description  在vod-list后添加一个按钮，点击按钮后复制vod-list内容到剪贴板。
 // @author       byhooi
 // @match        https://www.jisuziyuan.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=jisuziyuan.com
-// @grant        none
+
 // ==/UserScript==
 
 (function() {
