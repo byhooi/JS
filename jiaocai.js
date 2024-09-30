@@ -1,29 +1,135 @@
 // ==UserScript==
-// @name         智慧教育PDF下载助手
+// @name         智慧教育教材PDF链接复制
 // @namespace    http://tampermonkey.net/
 // @version      0.5
-// @description  移除智慧教育平台上PDF文件URL中的'-private'
-// @match        https://basic.smartedu.cn/*
-// @grant        none
+// @description  复制智慧教育平台教材PDF的直接下载链接
+// @match        https://basic.smartedu.cn/tchMaterial/*
+// @grant        GM_setClipboard
 // ==/UserScript==
 
 (function() {
     'use strict';
+    // 创建复制按钮
+    const copyButton = document.createElement('button');
+    copyButton.textContent = '复制PDF链接';
+    copyButton.style.position = 'fixed';
+    copyButton.style.top = '10px';
+    copyButton.style.right = '10px';
+    copyButton.style.zIndex = '9999';
+    copyButton.style.padding = '10px 15px';
+    copyButton.style.backgroundColor = '#4CAF50';
+    copyButton.style.color = 'white';
+    copyButton.style.border = 'none';
+    copyButton.style.borderRadius = '5px';
+    copyButton.style.cursor = 'pointer';
+    copyButton.style.display = 'none'; // 初始状态为隐藏
+    copyButton.style.transition = 'all 0.3s ease';
 
-    // 修改IDM下载框的URL
-    function modifyIdmUrl() {
-        var idmLinks = document.querySelectorAll('#idm-download-dialog a[href*=".pdf"]');
-        idmLinks.forEach(function(link) {
-            var url = new URL(link.href);
-            url.hostname = url.hostname.replace(/-private/g, '');
-            link.href = url.toString();
-        });
+    // 修改复制功能
+    copyButton.addEventListener('click', function() {
+        const decodedLink = extractDirectPDFLink(pdfLink);
+        GM_setClipboard(decodedLink);
+        console.log('PDF直接链接已复制到剪贴板');
+        
+        copyButton.textContent = '已复制';
+        copyButton.style.backgroundColor = '#333';
+        
+        setTimeout(() => {
+            copyButton.style.display = 'none';
+            copyButton.textContent = '复制PDF链接';
+            copyButton.style.backgroundColor = '#4CAF50';
+        }, 2000);
+    });
+
+    let pdfLink = '';
+
+    // 在XHR拦截代码中更新pdfLink
+    const originalXHR = window.XMLHttpRequest;
+    window.XMLHttpRequest = function() {
+        const xhr = new originalXHR();
+        const originalOpen = xhr.open;
+        xhr.open = function() {
+            console.log('拦截到XHR请求:', arguments[1]);
+            const potentialPDFLink = extractPDFLink(arguments[1]);
+            if (potentialPDFLink.includes('.pdf')) {
+                pdfLink = potentialPDFLink;
+                console.log('找到PDF链接:', pdfLink);
+                copyButton.style.display = 'block';
+            }
+            originalOpen.apply(this, arguments);
+        };
+        return xhr;
+    };
+
+    // 修改Fetch API拦截部分
+    const originalFetch = window.fetch;
+    window.fetch = function() {
+        console.log('拦截到Fetch请求:', arguments[0]);
+        const potentialPDFLink = extractPDFLink(arguments[0]);
+        if (potentialPDFLink.includes('.pdf')) {
+            pdfLink = potentialPDFLink;
+            console.log('找到PDF链接 (Fetch):', pdfLink);
+            copyButton.style.display = 'block';
+        }
+        return originalFetch.apply(this, arguments);
+    };
+
+    document.body.appendChild(copyButton);
+
+    function findPDFLinkInDOM() {
+        const links = document.querySelectorAll('a[href*=".pdf"], iframe[src*=".pdf"], embed[src*=".pdf"], object[data*=".pdf"]');
+        for (const link of links) {
+            const href = link.href || link.src || link.data;
+            if (href) {
+                pdfLink = decodeURIComponent(href);
+                console.log('在DOM中找到PDF链接:', pdfLink);
+                copyButton.style.display = 'block';
+                return true;
+            }
+        }
+        return false;
     }
 
-    // 监听IDM下载框弹出事件
-    document.addEventListener('DOMNodeInserted', function(event) {
-        if (event.target.id === 'idm-download-dialog') {
-            setTimeout(modifyIdmUrl, 100); // 稍微延迟以确保下载框完全加载
+    let checkCount = 0;
+    const maxChecks = 10;
+    const checkInterval = setInterval(() => {
+        checkCount++;
+        console.log(`第${checkCount}次检查PDF链接`);
+        if (pdfLink || findPDFLinkInDOM() || checkCount >= maxChecks) {
+            clearInterval(checkInterval);
+            if (!pdfLink) {
+                console.log('未能找到PDF链接');
+                alert('未能找到PDF链接,请刷新页面后重试');
+            }
+        }
+    }, 2000);
+
+    window.addEventListener('load', function() {
+        if (!pdfLink) {
+            console.log('页面加载完成,尝试从DOM中查找PDF链接');
+            findPDFLinkInDOM();
         }
     });
 })();
+
+function extractPDFLink(url) {
+    if (url.includes('viewer.html?file=')) {
+        return decodeURIComponent(url.split('viewer.html?file=')[1].split('&')[0]);
+    }
+    return url;
+}
+
+function extractDirectPDFLink(url) {
+    // 移除 -private 部分
+    url = url.replace(/-private/g, '');
+    
+    // 如果链接包含 "viewer.html?file="，提取实际的PDF链接
+    if (url.includes('viewer.html?file=')) {
+        url = decodeURIComponent(url.split('viewer.html?file=')[1].split('&')[0]);
+    }
+    
+    // 移除链接中的 headers 参数
+    url = url.split('&headers=')[0];
+    
+    return url;
+}
