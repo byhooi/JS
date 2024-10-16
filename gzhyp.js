@@ -1,10 +1,12 @@
 // ==UserScript==
 // @name         微信公众号音频地址复制
-// @namespace    http://tampermonkey.net/
-// @version      0.3
+// @namespace    http://github.com/byhooi
+// @version      1.0
 // @description  复制微信公众号中播放的音频文件地址
 // @match        https://mp.weixin.qq.com/*
 // @grant        GM_setClipboard
+// @downloadURL https://raw.githubusercontent.com/byhooi/JS/refs/heads/master/gzhyp.js
+// @updateURL https://raw.githubusercontent.com/byhooi/JS/refs/heads/master/gzhyp.js
 // ==/UserScript==
 
 (function() {

@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         卧龙资源复制全部
-// @version      2.1
+// @namespace    http://github.com/byhooi
+// @version      2.0
 // @description  卧龙资源修复复制全部按钮，添加视觉反馈，优化加载速度
-// @author       byhooi
 // @match        https://wolongzy.cc/.*
-// @icon         https://www.google.com/s2/favicons?sz=64&domain=wolongzy.cc
 // @grant        none
 // @run-at       document-start
+// @downloadURL https://raw.githubusercontent.com/byhooi/JS/refs/heads/master/wlzy.js
+// @updateURL https://raw.githubusercontent.com/byhooi/JS/refs/heads/master/wlzy.js
 // ==/UserScript==
 
 (function() {

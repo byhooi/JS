@@ -1,11 +1,12 @@
 // ==UserScript==
-// @name         京东自动评价JS脚本 by Clarkent V0.3
-// @namespace    http://tampermonkey.net/
-// @version      0.3
+// @name         京东自动评价JS脚本
+// @namespace    http://github.com/byhooi
+// @version      1.0
 // @description  在京东自动进行商品评价
-// @author       Clarkent
 // @match        https://club.jd.com/myJdcomments/myJdcomment.action
 // @grant        none
+// @downloadURL https://raw.githubusercontent.com/byhooi/JS/refs/heads/master/jdpj.js
+// @updateURL https://raw.githubusercontent.com/byhooi/JS/refs/heads/master/jdpj.js
 // ==/UserScript==
 
 (function() {

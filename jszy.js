@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         极速资源复制按钮
+// @namespace    http://github.com/byhooi
 // @version      2.0
 // @description  在vod-list后添加一个按钮，点击按钮后复制vod-list内容到剪贴板。
-// @author       byhooi
 // @match        https://www.jisuziyuan.com/*
-// @icon         https://www.google.com/s2/favicons?sz=64&domain=jisuziyuan.com
+// @downloadURL https://raw.githubusercontent.com/byhooi/JS/refs/heads/master/jszy.js
+// @updateURL https://raw.githubusercontent.com/byhooi/JS/refs/heads/master/jszy.js
 // ==/UserScript==
 
 (function() {
