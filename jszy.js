@@ -4,8 +4,8 @@
 // @version      2.0
 // @description  在vod-list后添加一个按钮，点击按钮后复制vod-list内容到剪贴板。
 // @match        https://www.jisuziyuan.com/*
-// @downloadURL https://raw.githubusercontent.com/byhooi/JS/refs/heads/master/jszy.js
-// @updateURL https://raw.githubusercontent.com/byhooi/JS/refs/heads/master/jszy.js
+// @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/jszy.js
+// @updateURL https://raw.githubusercontent.com/byhooi/JS/master/jszy.js
 // ==/UserScript==
 
 (function() {

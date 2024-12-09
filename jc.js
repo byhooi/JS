@@ -5,8 +5,8 @@
 // @description  复制智慧教育平台教材PDF的直接下载链接
 // @match        https://basic.smartedu.cn/tchMaterial/*
 // @grant        GM_setClipboard
-// @downloadURL https://raw.githubusercontent.com/byhooi/JS/refs/heads/master/jc.js
-// @updateURL https://raw.githubusercontent.com/byhooi/JS/refs/heads/master/jc.js
+// @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/jc.js
+// @updateURL https://raw.githubusercontent.com/byhooi/JS/master/jc.js
 // ==/UserScript==
 
 (function() {

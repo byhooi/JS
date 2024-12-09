@@ -5,8 +5,8 @@
 // @description  在京东自动进行商品评价
 // @match        https://club.jd.com/myJdcomments/myJdcomment.action
 // @grant        none
-// @downloadURL https://raw.githubusercontent.com/byhooi/JS/refs/heads/master/jdpj.js
-// @updateURL https://raw.githubusercontent.com/byhooi/JS/refs/heads/master/jdpj.js
+// @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/jdpj.js
+// @updateURL https://raw.githubusercontent.com/byhooi/JS/master/jdpj.js
 // ==/UserScript==
 
 (function() {

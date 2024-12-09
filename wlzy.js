@@ -6,8 +6,8 @@
 // @match        https://wolongzy.cc/.*
 // @grant        none
 // @run-at       document-start
-// @downloadURL https://raw.githubusercontent.com/byhooi/JS/refs/heads/master/wlzy.js
-// @updateURL https://raw.githubusercontent.com/byhooi/JS/refs/heads/master/wlzy.js
+// @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/wlzy.js
+// @updateURL https://raw.githubusercontent.com/byhooi/JS/master/wlzy.js
 // ==/UserScript==
 
 (function() {
