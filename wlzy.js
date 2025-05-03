@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         卧龙资源复制全部
 // @namespace    http://github.com/byhooi
-// @version      2.0
+// @version      2.1
 // @description  卧龙资源修复复制全部按钮，添加视觉反馈，优化加载速度
 // @match        https://wolongzy.cc/.*
 // @grant        none
