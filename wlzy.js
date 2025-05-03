@@ -66,8 +66,11 @@
                         const linkElement = item.querySelector('font[color="red"]');
                         if (titleElement && linkElement) {
                             const title = titleElement.getAttribute('title');
-                            const link = linkElement.textContent.split('$')[1];
-                            content += `${title} ${link}\n`;
+                            // 排除包含"纯享"的项目
+                            if (!title.includes('纯享')) {
+                                const link = linkElement.textContent.split('$')[1];
+                                content += `${title} ${link}\n`;
+                            }
                         }
                     });
                     await copyContent(content, copyAllButton);
