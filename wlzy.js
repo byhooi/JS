@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         卧龙资源复制全部
 // @namespace    http://github.com/byhooi
-// @version      2.2
+// @version      2.3
 // @description  复制排除纯享内容
-// @match        https://wolongzy.cc/.*
-// @match        https://wolongzyw.com/.*
+// @match        https://wolongzy.cc/index.php/vod/detail/id/*.html
+// @match        https://wolongzyw.com/index.php/vod/detail/id/*.html
 // @grant        none
 // @run-at       document-start
 // @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/wlzy.js
@@ -114,34 +114,9 @@
             }
         }
 
-        // 元素轮询工具函数
-        function waitForElement(selector, callback, interval = 300, timeout = 10000) {
-            const startTime = Date.now();
-            (function check() {
-                const el = document.querySelector(selector);
-                if (el) {
-                    callback(el);
-                } else if (Date.now() - startTime < timeout) {
-                    setTimeout(check, interval);
-                } else {
-                    console.warn('等待元素超时:', selector);
-                }
-            })();
-        }
-
-        function mainWithRetry() {
-            waitForElement('.copy_checked', () => {
-                setupCopyAllButton();
-                setupSingleCopyLinks();
-                scrollToBottom();
-            });
-        }
-
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', mainWithRetry);
-        } else {
-            mainWithRetry();
-        }
+        setupCopyAllButton();
+        setupSingleCopyLinks();
+        scrollToBottom();
     }
 
     if (document.readyState === 'loading') {
