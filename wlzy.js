@@ -114,9 +114,34 @@
             }
         }
 
-        setupCopyAllButton();
-        setupSingleCopyLinks();
-        scrollToBottom();
+        // 元素轮询工具函数
+        function waitForElement(selector, callback, interval = 300, timeout = 10000) {
+            const startTime = Date.now();
+            (function check() {
+                const el = document.querySelector(selector);
+                if (el) {
+                    callback(el);
+                } else if (Date.now() - startTime < timeout) {
+                    setTimeout(check, interval);
+                } else {
+                    console.warn('等待元素超时:', selector);
+                }
+            })();
+        }
+
+        function mainWithRetry() {
+            waitForElement('.copy_checked', () => {
+                setupCopyAllButton();
+                setupSingleCopyLinks();
+                scrollToBottom();
+            });
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', mainWithRetry);
+        } else {
+            mainWithRetry();
+        }
     }
 
     if (document.readyState === 'loading') {
