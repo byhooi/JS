@@ -4,6 +4,7 @@
 // @version      2.1
 // @description  复制排除纯享内容
 // @match        https://wolongzy.cc/.*
+// @match        https://wolongzyw.com/.*
 // @grant        none
 // @run-at       document-start
 // @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/wlzy.js
