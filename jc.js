@@ -189,20 +189,21 @@ function extractPDFLink(url) {
 
 function extractDirectPDFLink(url) {
     // 不再移除 -private 部分
-    
     // 如果链接包含 "viewer.html?file="，提取实际的PDF链接
     if (url.includes('viewer.html?file=')) {
         url = decodeURIComponent(url.split('viewer.html?file=')[1].split('&')[0]);
     }
-    
+    // 如果链接包含 "viewer.html?isPreview=1&hasCatalog=true&file=..."，也提取实际PDF链接
+    else if (url.includes('viewer.html?isPreview=1&hasCatalog=true&file=')) {
+        url = decodeURIComponent(url.split('viewer.html?isPreview=1&hasCatalog=true&file=')[1].split('&')[0]);
+    }
     // 移除链接中的 headers 参数
     url = url.split('&headers=')[0];
-    
-    // 添加 accessToken 参数（自动获取）
+    // 添加 accessToken 参数（自动获取），始终用 ? 连接
     if (accessToken) {
-        url += (url.includes('?') ? '&' : '?') + 'accessToken=' + accessToken;
+        url += '?accessToken=' + accessToken;
     } else {
-        url += (url.includes('?') ? '&' : '?') + 'accessToken=7F938B205F876FC3A30551F3A493138335E075F47C91AAD010EA011C587DD4C62CEA5A6F5014357370401C5A9DB4A41ECB28292A525A8239';
+        url += '?accessToken=7F938B205F876FC3A30551F3A493138335E075F47C91AAD010EA011C587DD4C62CEA5A6F5014357370401C5A9DB4A41ECB28292A525A8239';
     }
     return url;
 }
