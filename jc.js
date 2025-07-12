@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         智慧教育教材PDF链接复制
 // @namespace    http://github.com/byhooi
-// @version      2.0
+// @version      2.1
 // @description  复制智慧教育平台教材PDF的直接下载链接
 // @match        https://basic.smartedu.cn/tchMaterial/*
 // @grant        GM_setClipboard
@@ -122,6 +122,8 @@ function extractPDFLink(url) {
 }
 
 function extractDirectPDFLink(url) {
+    // 不再移除 -private 部分
+    
     // 如果链接包含 "viewer.html?file="，提取实际的PDF链接
     if (url.includes('viewer.html?file=')) {
         url = decodeURIComponent(url.split('viewer.html?file=')[1].split('&')[0]);
@@ -130,44 +132,8 @@ function extractDirectPDFLink(url) {
     // 移除链接中的 headers 参数
     url = url.split('&headers=')[0];
     
-    // 尝试从localStorage或cookie中获取token
-    const token = getAccessToken();
-    if (token) {
-        // 添加token参数到URL
-        url += (url.includes('?') ? '&' : '?') + 'accessToken=' + token;
-    }
+    // 添加 accessToken 参数
+    url += "?accessToken=7F938B205F876FC3A30551F3A493138335E075F47C91AAD010EA011C587DD4C62CEA5A6F5014357370401C5A9DB4A41ECB28292A525A8239";
     
     return url;
-}
-
-// 新增函数：从页面中获取accessToken
-function getAccessToken() {
-    // 尝试从localStorage获取
-    let token = localStorage.getItem('accessToken') || localStorage.getItem('token');
-    
-    // 如果localStorage中没有，尝试从cookie获取
-    if (!token) {
-        const cookies = document.cookie.split(';');
-        for (const cookie of cookies) {
-            const [name, value] = cookie.trim().split('=');
-            if (name === 'accessToken' || name === 'token') {
-                token = value;
-                break;
-            }
-        }
-    }
-    
-    // 如果还是没有，尝试从当前页面URL或其他API响应中提取
-    if (!token) {
-        // 从URL中提取
-        const urlParams = new URLSearchParams(window.location.search);
-        token = urlParams.get('accessToken') || urlParams.get('token');
-    }
-    
-    // 如果仍然没有找到token，可以尝试分析网络请求
-    if (!token) {
-        console.log('未能自动获取accessToken，使用PDF链接时可能需要手动添加');
-    }
-    
-    return token;
 }
