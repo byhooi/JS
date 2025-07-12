@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         智慧教育教材PDF链接复制
 // @namespace    http://github.com/byhooi
-// @version      2.1
+// @version      2.2
 // @description  复制智慧教育平台教材PDF的直接下载链接
 // @match        https://basic.smartedu.cn/tchMaterial/*
 // @grant        GM_setClipboard
@@ -114,6 +114,72 @@
     });
 })();
 
+// 自动获取 accessToken
+let accessToken = '';
+
+// 拦截 XHR 响应，提取 accessToken
+(function() {
+    const origOpen = XMLHttpRequest.prototype.open;
+    const origSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function(method, url) {
+        this._url = url;
+        return origOpen.apply(this, arguments);
+    };
+    XMLHttpRequest.prototype.send = function() {
+        this.addEventListener('readystatechange', function() {
+            if (this.readyState === 4 && this._url && this._url.includes('/sso/tokens')) {
+                try {
+                    // 尝试解析 JSON
+                    let res = this.responseText;
+                    let json = null;
+                    try {
+                        json = JSON.parse(res);
+                    } catch (e) {
+                        // 兼容 callback 包裹的 JSONP
+                        let match = res.match(/\{[\s\S]*\}/);
+                        if (match) json = JSON.parse(match[0]);
+                    }
+                    if (json && json.accessToken) {
+                        accessToken = json.accessToken;
+                        console.log('自动获取到 accessToken:', accessToken);
+                    }
+                } catch (e) {
+                    console.warn('accessToken 解析失败', e);
+                }
+            }
+        });
+        return origSend.apply(this, arguments);
+    };
+})();
+
+// 拦截 fetch 响应，提取 accessToken
+(function() {
+    const origFetch = window.fetch;
+    window.fetch = function() {
+        return origFetch.apply(this, arguments).then(async resp => {
+            try {
+                if (typeof arguments[0] === 'string' && arguments[0].includes('/sso/tokens')) {
+                    let text = await resp.clone().text();
+                    let json = null;
+                    try {
+                        json = JSON.parse(text);
+                    } catch (e) {
+                        let match = text.match(/\{[\s\S]*\}/);
+                        if (match) json = JSON.parse(match[0]);
+                    }
+                    if (json && json.accessToken) {
+                        accessToken = json.accessToken;
+                        console.log('自动获取到 accessToken(fetch):', accessToken);
+                    }
+                }
+            } catch (e) {
+                console.warn('accessToken(fetch) 解析失败', e);
+            }
+            return resp;
+        });
+    };
+})();
+
 function extractPDFLink(url) {
     if (url.includes('viewer.html?file=')) {
         return decodeURIComponent(url.split('viewer.html?file=')[1].split('&')[0]);
@@ -132,8 +198,11 @@ function extractDirectPDFLink(url) {
     // 移除链接中的 headers 参数
     url = url.split('&headers=')[0];
     
-    // 添加 accessToken 参数
-    url += "?accessToken=7F938B205F876FC3A30551F3A493138335E075F47C91AAD010EA011C587DD4C62CEA5A6F5014357370401C5A9DB4A41ECB28292A525A8239";
-    
+    // 添加 accessToken 参数（自动获取）
+    if (accessToken) {
+        url += (url.includes('?') ? '&' : '?') + 'accessToken=' + accessToken;
+    } else {
+        url += (url.includes('?') ? '&' : '?') + 'accessToken=7F938B205F876FC3A30551F3A493138335E075F47C91AAD010EA011C587DD4C62CEA5A6F5014357370401C5A9DB4A41ECB28292A525A8239';
+    }
     return url;
 }
