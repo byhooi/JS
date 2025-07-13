@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         智慧教育教材PDF链接复制
 // @namespace    http://github.com/byhooi
-// @version      2.3
+// @version      2.4
 // @description  复制智慧教育平台教材PDF的直接下载链接
 // @match        https://basic.smartedu.cn/tchMaterial/*
 // @grant        GM_setClipboard
@@ -115,7 +115,7 @@
 })();
 
 // 固定 accessToken
-let accessToken = '7F938B205F876FC3A30551F3A493138335E075F47C91AAD010EA011C587DD4C62CEA5A6F5014357370401C5A9DB4A41ECB28292A525A8239';
+let accessToken = '手动输入获取的 accessToken';
 
 function extractPDFLink(url) {
     if (url.includes('viewer.html?file=')) {
@@ -125,16 +125,12 @@ function extractPDFLink(url) {
 }
 
 function extractDirectPDFLink(url) {
-    // 不再移除 -private 部分
-    // 如果链接包含 "viewer.html?file="，提取实际的PDF链接
-    if (url.includes('viewer.html?file=')) {
-        url = decodeURIComponent(url.split('viewer.html?file=')[1].split('&')[0]);
+    // 通用正则，匹配 file= 后面的 PDF 链接
+    const fileMatch = url.match(/file=([^&]+)/);
+    if (fileMatch) {
+        url = decodeURIComponent(fileMatch[1]);
     }
-    // 如果链接包含 "viewer.html?isPreview=1&hasCatalog=true&file=..."，也提取实际PDF链接
-    else if (url.includes('viewer.html?isPreview=1&hasCatalog=true&file=')) {
-        url = decodeURIComponent(url.split('viewer.html?isPreview=1&hasCatalog=true&file=')[1].split('&')[0]);
-    }
-    // 移除链接中的 headers 参数
+    // 移除 headers 参数
     url = url.split('&headers=')[0];
     // 添加 accessToken 参数，始终用 ? 连接
     url += '?accessToken=' + accessToken;
