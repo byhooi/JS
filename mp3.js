@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         智慧教育MP3链接复制
+// @name         MP3链接复制
 // @namespace    http://github.com/byhooi
-// @version      1.0
-// @description  复制智慧教育平台MP3的直接下载链接
+// @version      1.1
+// @description  MP3的下载链接
 // @match        https://basic.smartedu.cn/*
 // @grant        GM_setClipboard
 // @grant        GM_xmlhttpRequest

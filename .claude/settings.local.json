@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "WebFetch(domain:sso.basic.smartedu.cn)"
-    ],
-    "deny": []
-  }
-}

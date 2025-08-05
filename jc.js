@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         智慧教育教材PDF链接复制
+// @name         PDF链接复制
 // @namespace    http://github.com/byhooi
-// @version      2.5
-// @description  复制智慧教育平台教材PDF的直接下载链接
+// @version      2.6
+// @description  PDF的下载链接
 // @match        https://basic.smartedu.cn/tchMaterial/*
 // @grant        GM_setClipboard
 // @grant        GM_xmlhttpRequest
