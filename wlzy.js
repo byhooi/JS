@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         卧龙资源复制全部
 // @namespace    http://github.com/byhooi
-// @version      2.3
+// @version      2.4
 // @description  复制排除纯享内容
 // @match        https://wolongzy.cc/index.php/vod/detail/id/*.html
 // @match        https://wolongzyw.com/index.php/vod/detail/id/*.html
@@ -14,109 +14,247 @@
 (function() {
     'use strict';
 
-    function initScript() {
-        async function copyContent(content, button) {
+    const CONSTANTS = {
+        FEEDBACK_DELAY: 2000,
+        TEMP_BUTTON_DELAY: 2000,
+        EXCLUDED_KEYWORDS: ['纯享'],
+        LINK_SEPARATOR: '$',
+        SELECTORS: {
+            COPY_ALL_BUTTON: '.copy_checked',
+            VIDEO_ITEMS: '.playlist .text-style',
+            TITLE_ELEMENT: '.copy_text',
+            LINK_ELEMENT: 'font[color="red"]',
+            SINGLE_COPY_TARGET: '.text-style .copy_text font[color="red"]',
+            CONTENT_SCROLL: '#content .playlist ul'
+        },
+        TEXT: {
+            COPY_ALL: '复制全部',
+            COPY_SINGLE: '复制',
+            COPY_SUCCESS: '复制成功！',
+            COPY_FAILED: '复制失败',
+            ERROR_NO_TITLE: '未找到标题元素'
+        }
+    };
+
+    const STYLES = {
+        button: {
+            padding: '8px 16px',
+            backgroundColor: '#4CAF50',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontFamily: 'Arial, sans-serif',
+            transition: 'background-color 0.3s ease',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+        },
+        buttonSuccess: {
+            backgroundColor: '#45a049'
+        },
+        buttonError: {
+            backgroundColor: '#ff4444'
+        }
+    };
+
+    class WolongResourceCopier {
+        constructor() {
+            this.init();
+        }
+
+        init() {
+            this.setupCopyAllButton();
+            this.setupSingleCopyLinks();
+            this.scrollToBottom();
+        }
+
+        applyStyles(element, styles) {
+            Object.assign(element.style, styles);
+        }
+
+        styleButton(button) {
+            this.applyStyles(button, STYLES.button);
+        }
+
+        async copyToClipboard(content) {
+            if (!content || typeof content !== 'string') {
+                throw new Error('Invalid content to copy');
+            }
+
             try {
-                await navigator.clipboard.writeText(content);
-                
-                const originalText = button.innerText;
-                const originalColor = button.style.backgroundColor;
-                button.innerText = '复制成功！';
-                button.style.backgroundColor = '#45a049';
-                
-                setTimeout(() => {
-                    button.innerText = originalText;
-                    button.style.backgroundColor = originalColor;
-                }, 2000);
-            } catch (err) {
-                console.error('复制失败:', err);
-                button.innerText = '复制失败';
-                button.style.backgroundColor = '#ff4444';
-                
-                setTimeout(() => {
-                    button.innerText = '复制全部';
-                    button.style.backgroundColor = '#4CAF50';
-                }, 2000);
-            }
-        }
-
-        function styleButton(button) {
-            button.style.cssText = `
-                padding: 8px 16px;
-                background-color: #4CAF50;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                cursor: pointer;
-                font-size: 14px;
-                transition: background-color 0.3s;
-            `;
-        }
-
-        function setupCopyAllButton() {
-            const copyAllButton = document.querySelector('.copy_checked');
-            if (copyAllButton) {
-                styleButton(copyAllButton);
-                copyAllButton.innerText = '复制全部';
-
-                copyAllButton.addEventListener('click', async function() {
-                    let content = '';
-                    const videoItems = document.querySelectorAll('.playlist .text-style');
-                    videoItems.forEach((item) => {
-                        const titleElement = item.querySelector('.copy_text');
-                        const linkElement = item.querySelector('font[color="red"]');
-                        if (titleElement && linkElement) {
-                            const title = titleElement.getAttribute('title');
-                            // 排除包含"纯享"的项目
-                            if (!title.includes('纯享')) {
-                                const link = linkElement.textContent.split('$')[1];
-                                content += `${title} ${link}\n`;
-                            }
-                        }
-                    });
-                    await copyContent(content, copyAllButton);
-                });
-            }
-        }
-
-        function setupSingleCopyLinks() {
-            document.addEventListener('click', async function(event) {
-                let target = event.target;
-                if (target.matches('.text-style .copy_text font[color="red"]') || target.closest('.text-style .copy_text font[color="red"]')) {
-                    event.preventDefault();
-                    let titleElement = target.closest('.text-style').querySelector('.copy_text');
-                    if (!titleElement) {
-                        console.error('未找到标题元素');
-                        return;
-                    }
-                    const title = titleElement.getAttribute('title');
-                    const linkText = target.textContent;
-                    const link = linkText.split('$')[1];
-                    
-                    const tempButton = document.createElement('button');
-                    styleButton(tempButton);
-                    tempButton.innerText = '复制';
-                    target.parentNode.insertBefore(tempButton, target.nextSibling);
-                    
-                    await copyContent(`${title} ${link}`, tempButton);
-                    
-                    setTimeout(() => {
-                        tempButton.remove();
-                    }, 2000);
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(content.trim());
+                    return true;
+                } else {
+                    const textArea = document.createElement('textarea');
+                    textArea.value = content.trim();
+                    textArea.style.position = 'fixed';
+                    textArea.style.opacity = '0';
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    const success = document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    return success;
                 }
+            } catch (error) {
+                console.error('Clipboard operation failed:', error);
+                return false;
+            }
+        }
+
+        async handleCopyOperation(content, button, originalText = null) {
+            if (!content) {
+                this.showFeedback(button, CONSTANTS.TEXT.COPY_FAILED, STYLES.buttonError, originalText);
+                return false;
+            }
+
+            const success = await this.copyToClipboard(content);
+            
+            if (success) {
+                this.showFeedback(button, CONSTANTS.TEXT.COPY_SUCCESS, STYLES.buttonSuccess, originalText);
+            } else {
+                this.showFeedback(button, CONSTANTS.TEXT.COPY_FAILED, STYLES.buttonError, originalText);
+            }
+
+            return success;
+        }
+
+        showFeedback(button, text, additionalStyles, originalText = null) {
+            const originalButtonText = originalText || button.textContent;
+            const originalBackgroundColor = button.style.backgroundColor;
+            
+            button.textContent = text;
+            this.applyStyles(button, additionalStyles);
+            
+            setTimeout(() => {
+                button.textContent = originalButtonText;
+                button.style.backgroundColor = originalBackgroundColor;
+            }, CONSTANTS.FEEDBACK_DELAY);
+        }
+
+        extractVideoData(item) {
+            const titleElement = item.querySelector(CONSTANTS.SELECTORS.TITLE_ELEMENT);
+            const linkElement = item.querySelector(CONSTANTS.SELECTORS.LINK_ELEMENT);
+            
+            if (!titleElement || !linkElement) {
+                return null;
+            }
+
+            const title = titleElement.getAttribute('title');
+            if (!title) {
+                return null;
+            }
+
+            if (CONSTANTS.EXCLUDED_KEYWORDS.some(keyword => title.includes(keyword))) {
+                return null;
+            }
+
+            const linkText = linkElement.textContent;
+            if (!linkText || !linkText.includes(CONSTANTS.LINK_SEPARATOR)) {
+                return null;
+            }
+
+            const link = linkText.split(CONSTANTS.LINK_SEPARATOR)[1];
+            if (!link) {
+                return null;
+            }
+
+            return { title: title.trim(), link: link.trim() };
+        }
+
+        collectAllVideoContent() {
+            const videoItems = document.querySelectorAll(CONSTANTS.SELECTORS.VIDEO_ITEMS);
+            const content = [];
+
+            videoItems.forEach(item => {
+                const videoData = this.extractVideoData(item);
+                if (videoData) {
+                    content.push(`${videoData.title} ${videoData.link}`);
+                }
+            });
+
+            return content.join('\n');
+        }
+
+        setupCopyAllButton() {
+            const copyAllButton = document.querySelector(CONSTANTS.SELECTORS.COPY_ALL_BUTTON);
+            if (!copyAllButton) {
+                return;
+            }
+
+            this.styleButton(copyAllButton);
+            copyAllButton.textContent = CONSTANTS.TEXT.COPY_ALL;
+
+            copyAllButton.addEventListener('click', async (event) => {
+                event.preventDefault();
+                const content = this.collectAllVideoContent();
+                await this.handleCopyOperation(content, copyAllButton, CONSTANTS.TEXT.COPY_ALL);
             });
         }
 
-        function scrollToBottom() {
-            const contentDiv = document.querySelector('#content .playlist ul');
+        setupSingleCopyLinks() {
+            document.addEventListener('click', async (event) => {
+                const target = event.target;
+                
+                if (!target.matches(CONSTANTS.SELECTORS.SINGLE_COPY_TARGET) && 
+                    !target.closest(CONSTANTS.SELECTORS.SINGLE_COPY_TARGET)) {
+                    return;
+                }
+
+                event.preventDefault();
+                
+                const textStyleElement = target.closest('.text-style');
+                if (!textStyleElement) {
+                    console.error(CONSTANTS.TEXT.ERROR_NO_TITLE);
+                    return;
+                }
+
+                const videoData = this.extractVideoData(textStyleElement);
+                if (!videoData) {
+                    console.error(CONSTANTS.TEXT.ERROR_NO_TITLE);
+                    return;
+                }
+
+                const tempButton = this.createTempButton(target);
+                const content = `${videoData.title} ${videoData.link}`;
+                
+                const success = await this.handleCopyOperation(content, tempButton, CONSTANTS.TEXT.COPY_SINGLE);
+                
+                setTimeout(() => {
+                    if (tempButton.parentNode) {
+                        tempButton.remove();
+                    }
+                }, CONSTANTS.TEMP_BUTTON_DELAY);
+            });
+        }
+
+        createTempButton(targetElement) {
+            const tempButton = document.createElement('button');
+            this.styleButton(tempButton);
+            tempButton.textContent = CONSTANTS.TEXT.COPY_SINGLE;
+            
+            const parent = targetElement.parentNode;
+            if (parent) {
+                parent.insertBefore(tempButton, targetElement.nextSibling);
+            }
+            
+            return tempButton;
+        }
+
+        scrollToBottom() {
+            const contentDiv = document.querySelector(CONSTANTS.SELECTORS.CONTENT_SCROLL);
             if (contentDiv) {
                 contentDiv.scrollTop = contentDiv.scrollHeight;
             }
         }
+    }
 
-        setupCopyAllButton();
-        setupSingleCopyLinks();
-        scrollToBottom();
+    function initScript() {
+        try {
+            new WolongResourceCopier();
+        } catch (error) {
+            console.error('Failed to initialize WolongResourceCopier:', error);
+        }
     }
 
     if (document.readyState === 'loading') {

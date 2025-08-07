@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         微信公众号音频地址复制
 // @namespace    http://github.com/byhooi
-// @version      1.0
+// @version      1.1
 // @description  复制微信公众号中播放的音频文件地址
 // @match        https://mp.weixin.qq.com/*
 // @grant        GM_setClipboard
@@ -12,63 +12,177 @@
 (function() {
     'use strict';
 
-    // 创建一个按钮
-    const button = document.createElement('button');
-    button.textContent = '复制音频地址';
-    button.style.position = 'fixed';
-    button.style.top = '10px';
-    button.style.right = '10px';
-    button.style.zIndex = '9999';
-    button.style.padding = '10px 15px';
-    button.style.backgroundColor = '#4CAF50';
-    button.style.color = 'white';
-    button.style.border = 'none';
-    button.style.borderRadius = '5px';
-    button.style.cursor = 'pointer';
-    button.style.display = 'none'; // 初始状态为隐藏
-
-    // 删除消息元素相关代码
-
-    // 添加按钮到页面
-    document.body.appendChild(button);
-
-    // 存储最近播放的音频地址
-    let latestAudioSrc = '';
-
-    // 添加点击事件监听器
-    button.addEventListener('click', function() {
-        if (latestAudioSrc) {
-            GM_setClipboard(latestAudioSrc);
-            button.textContent = '已复制';
-            button.style.backgroundColor = '#333'; // 改变按钮颜色
-            setTimeout(() => {
-                button.textContent = '复制音频地址';
-                button.style.backgroundColor = '#4CAF50'; // 恢复原来的颜色
-                button.style.display = 'none'; // 2秒后隐藏按钮
-            }, 2000);
+    const STYLES = {
+        button: {
+            position: 'fixed',
+            top: '10px',
+            right: '10px',
+            zIndex: '9999',
+            padding: '10px 15px',
+            backgroundColor: '#4CAF50',
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontFamily: 'Arial, sans-serif',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+            transition: 'all 0.3s ease'
+        },
+        buttonCopied: {
+            backgroundColor: '#333'
+        },
+        buttonHidden: {
+            display: 'none'
+        },
+        buttonVisible: {
+            display: 'block'
         }
-    });
-
-    // 监听网络请求
-    const originalXHR = window.XMLHttpRequest;
-    window.XMLHttpRequest = function() {
-        const xhr = new originalXHR();
-        const originalOpen = xhr.open;
-        xhr.open = function() {
-            if (arguments[1].includes('res.wx.qq.com/voice/getvoice')) {
-                latestAudioSrc = arguments[1];
-                button.style.display = 'block'; // 检测到音频地址时显示按钮
-            }
-            originalOpen.apply(this, arguments);
-        };
-        return xhr;
     };
 
-    // 监听音频播放事件
-    document.addEventListener('play', function(e) {
-        if (e.target.tagName.toLowerCase() === 'audio') {
-            latestAudioSrc = e.target.src;
-            button.style.display = 'block'; // 音频开始播放时显示按钮
+    const CONSTANTS = {
+        AUDIO_API_URL: 'res.wx.qq.com/voice/getvoice',
+        HIDE_DELAY: 2000,
+        ORIGINAL_TEXT: '复制音频地址',
+        COPIED_TEXT: '已复制',
+        ERROR_TEXT: '复制失败'
+    };
+
+    class AudioCopyButton {
+        constructor() {
+            this.latestAudioSrc = '';
+            this.button = null;
+            this.hideTimeout = null;
+            this.init();
         }
-    }, true);
+
+        init() {
+            this.createButton();
+            this.setupEventListeners();
+            this.interceptNetworkRequests();
+        }
+
+        createButton() {
+            this.button = document.createElement('button');
+            this.button.textContent = CONSTANTS.ORIGINAL_TEXT;
+            this.applyStyles(this.button, STYLES.button);
+            this.applyStyles(this.button, STYLES.buttonHidden);
+            document.body.appendChild(this.button);
+        }
+
+        applyStyles(element, styles) {
+            Object.assign(element.style, styles);
+        }
+
+        showButton() {
+            this.applyStyles(this.button, STYLES.buttonVisible);
+            this.clearHideTimeout();
+        }
+
+        hideButton() {
+            this.applyStyles(this.button, STYLES.buttonHidden);
+        }
+
+        clearHideTimeout() {
+            if (this.hideTimeout) {
+                clearTimeout(this.hideTimeout);
+                this.hideTimeout = null;
+            }
+        }
+
+        updateButtonState(text, additionalStyles = {}) {
+            this.button.textContent = text;
+            this.applyStyles(this.button, additionalStyles);
+        }
+
+        async copyToClipboard() {
+            if (!this.latestAudioSrc) {
+                return false;
+            }
+
+            try {
+                if (typeof GM_setClipboard === 'function') {
+                    GM_setClipboard(this.latestAudioSrc);
+                    return true;
+                } else if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(this.latestAudioSrc);
+                    return true;
+                }
+                return false;
+            } catch (error) {
+                console.error('Failed to copy audio URL:', error);
+                return false;
+            }
+        }
+
+        async handleButtonClick() {
+            const success = await this.copyToClipboard();
+            
+            if (success) {
+                this.updateButtonState(CONSTANTS.COPIED_TEXT, STYLES.buttonCopied);
+                this.hideTimeout = setTimeout(() => {
+                    this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
+                    this.hideButton();
+                }, CONSTANTS.HIDE_DELAY);
+            } else {
+                this.updateButtonState(CONSTANTS.ERROR_TEXT, { backgroundColor: '#f44336' });
+                this.hideTimeout = setTimeout(() => {
+                    this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
+                }, CONSTANTS.HIDE_DELAY);
+            }
+        }
+
+        setupEventListeners() {
+            this.button.addEventListener('click', () => this.handleButtonClick());
+
+            document.addEventListener('play', (e) => {
+                if (e.target.tagName.toLowerCase() === 'audio' && e.target.src) {
+                    this.setAudioSource(e.target.src);
+                }
+            }, true);
+        }
+
+        setAudioSource(src) {
+            if (src && src.trim()) {
+                this.latestAudioSrc = src.trim();
+                this.showButton();
+            }
+        }
+
+        interceptNetworkRequests() {
+            const originalXHR = window.XMLHttpRequest;
+            const self = this;
+
+            window.XMLHttpRequest = function() {
+                const xhr = new originalXHR();
+                const originalOpen = xhr.open;
+
+                xhr.open = function(method, url, ...args) {
+                    if (typeof url === 'string' && url.includes(CONSTANTS.AUDIO_API_URL)) {
+                        self.setAudioSource(url);
+                    }
+                    return originalOpen.call(this, method, url, ...args);
+                };
+
+                return xhr;
+            };
+
+            if (window.fetch) {
+                const originalFetch = window.fetch;
+                window.fetch = function(input, ...args) {
+                    const url = typeof input === 'string' ? input : input.url;
+                    if (url && url.includes(CONSTANTS.AUDIO_API_URL)) {
+                        self.setAudioSource(url);
+                    }
+                    return originalFetch.call(this, input, ...args);
+                };
+            }
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => new AudioCopyButton());
+    } else {
+        new AudioCopyButton();
+    }
 })();
