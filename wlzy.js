@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         卧龙资源复制全部
 // @namespace    http://github.com/byhooi
-// @version      2.4
-// @description  复制排除纯享内容
+// @version      2.5
+// @description  复制全部内容
 // @match        https://wolongzy.cc/index.php/vod/detail/id/*.html
 // @match        https://wolongzyw.com/index.php/vod/detail/id/*.html
 // @grant        none
@@ -17,7 +17,6 @@
     const CONSTANTS = {
         FEEDBACK_DELAY: 2000,
         TEMP_BUTTON_DELAY: 2000,
-        EXCLUDED_KEYWORDS: ['纯享'],
         LINK_SEPARATOR: '$',
         SELECTORS: {
             COPY_ALL_BUTTON: '.copy_checked',
@@ -145,9 +144,6 @@
                 return null;
             }
 
-            if (CONSTANTS.EXCLUDED_KEYWORDS.some(keyword => title.includes(keyword))) {
-                return null;
-            }
 
             const linkText = linkElement.textContent;
             if (!linkText || !linkText.includes(CONSTANTS.LINK_SEPARATOR)) {
