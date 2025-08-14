@@ -61,28 +61,12 @@
             const play2Container = document.getElementById('play_2');
             if (!play2Container) return;
             
-            const copy1Button = play2Container.querySelector('input.copy1');
             const copy2Button = play2Container.querySelector('input.copy2');
-            const copy3Button = play2Container.querySelector('input.copy3');
-            
-            if (copy1Button) {
-                styleButton(copy1Button);
-                copy1Button.addEventListener('click', async function() {
-                    await copyLinks('links');
-                });
-            }
             
             if (copy2Button) {
                 styleButton(copy2Button);
                 copy2Button.addEventListener('click', async function() {
                     await copyLinks('name_links');
-                });
-            }
-            
-            if (copy3Button) {
-                styleButton(copy3Button);
-                copy3Button.addEventListener('click', async function() {
-                    await copyLinks('name_links_line');
                 });
             }
         }
@@ -93,7 +77,6 @@
             const play2List = document.getElementById('play_2');
             
             if (play2List) {
-                const lineName = play2List.querySelector('h3 span')?.textContent?.trim() || '';
                 const items = play2List.querySelectorAll('input[name="copy_sel"]');
                 
                 items.forEach((item) => {
@@ -104,31 +87,14 @@
                         
                         // 根据配置的关键词进行过滤
                         if (!filterKeyword || !title.includes(filterKeyword)) {
-                            switch (mode) {
-                                case 'links':
-                                    content += `${link}\n`;
-                                    break;
-                                case 'name_links':
-                                    content += `${title}$${link}\n`;
-                                    break;
-                                case 'name_links_line':
-                                    content += `${title}$${link}$${lineName}\n`;
-                                    break;
-                            }
+                            content += `${title}$${link}\n`;
                         }
                     }
                 });
             }
             
-            // 根据点击的按钮确定要传递给copyContent的按钮
-            let targetButton;
-            if (mode === 'links') {
-                targetButton = document.querySelector('#play_2 input.copy1');
-            } else if (mode === 'name_links') {
-                targetButton = document.querySelector('#play_2 input.copy2');
-            } else if (mode === 'name_links_line') {
-                targetButton = document.querySelector('#play_2 input.copy3');
-            }
+            // 获取 copy2 按钮
+            const targetButton = document.querySelector('#play_2 input.copy2');
             
             if (targetButton) {
                 await copyContent(content, targetButton);
