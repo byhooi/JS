@@ -3,7 +3,7 @@
 // @namespace    http://github.com/byhooi
 // @version      1.0
 // @description  修复虎牙资源复制问题，支持复制链接、复制名称$链接、复制名称$链接$线路
-// @match        https://huyazy.com/index.php/vod/detail/id/*.html
+// @match        https://huyazy.com/index.php/vod/detail/id/*.html?ac=detail
 // @grant        none
 // @run-at       document-start
 // @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/huyazy.js
@@ -57,10 +57,13 @@
         }
 
         function setupCopyButtons() {
-            // 查找现有的复制按钮
-            const copy1Button = document.querySelector('input.copy1');
-            const copy2Button = document.querySelector('input.copy2');
-            const copy3Button = document.querySelector('input.copy3');
+            // 查找 play_2 中的复制按钮
+            const play2Container = document.getElementById('play_2');
+            if (!play2Container) return;
+            
+            const copy1Button = play2Container.querySelector('input.copy1');
+            const copy2Button = play2Container.querySelector('input.copy2');
+            const copy3Button = play2Container.querySelector('input.copy3');
             
             if (copy1Button) {
                 styleButton(copy1Button);
@@ -86,50 +89,45 @@
 
         async function copyLinks(mode) {
             let content = '';
-            const playLists = document.querySelectorAll('[id^="play_"]');
+            // 只处理 play_2 播放列表
+            const play2List = document.getElementById('play_2');
             
-            playLists.forEach((playList) => {
-                const lineName = playList.previousElementSibling?.textContent?.trim() || '';
-                const items = playList.querySelectorAll('input[type="checkbox"]');
+            if (play2List) {
+                const lineName = play2List.querySelector('h3 span')?.textContent?.trim() || '';
+                const items = play2List.querySelectorAll('input[name="copy_sel"]');
                 
                 items.forEach((item) => {
-                    const label = item.nextElementSibling;
-                    if (label && item.checked) {
-                        const title = label.textContent?.trim() || '';
+                    if (item.checked) {
+                        const link = item.value;
+                        const linkElement = item.nextElementSibling;
+                        const title = linkElement?.getAttribute('title') || linkElement?.textContent?.split('$')[0] || '';
+                        
                         // 根据配置的关键词进行过滤
                         if (!filterKeyword || !title.includes(filterKeyword)) {
-                            const onclick = label.getAttribute('onclick');
-                            if (onclick) {
-                                const match = onclick.match(/player\('([^']+)'\)/);
-                                if (match) {
-                                    const link = match[1];
-                                    
-                                    switch (mode) {
-                                        case 'links':
-                                            content += `${link}\n`;
-                                            break;
-                                        case 'name_links':
-                                            content += `${title}$${link}\n`;
-                                            break;
-                                        case 'name_links_line':
-                                            content += `${title}$${link}$${lineName}\n`;
-                                            break;
-                                    }
-                                }
+                            switch (mode) {
+                                case 'links':
+                                    content += `${link}\n`;
+                                    break;
+                                case 'name_links':
+                                    content += `${title}$${link}\n`;
+                                    break;
+                                case 'name_links_line':
+                                    content += `${title}$${link}$${lineName}\n`;
+                                    break;
                             }
                         }
                     }
                 });
-            });
+            }
             
             // 根据点击的按钮确定要传递给copyContent的按钮
             let targetButton;
             if (mode === 'links') {
-                targetButton = document.querySelector('input.copy1');
+                targetButton = document.querySelector('#play_2 input.copy1');
             } else if (mode === 'name_links') {
-                targetButton = document.querySelector('input.copy2');
+                targetButton = document.querySelector('#play_2 input.copy2');
             } else if (mode === 'name_links_line') {
-                targetButton = document.querySelector('input.copy3');
+                targetButton = document.querySelector('#play_2 input.copy3');
             }
             
             if (targetButton) {
