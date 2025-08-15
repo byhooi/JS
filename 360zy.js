@@ -5,8 +5,8 @@
 // @description  在360zy.com视频详情页面添加复制按钮，提取剧集名称和播放链接
 // @match        https://360zy.com/voddetail/*.html
 // @grant        GM_setClipboard
-// @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/360zy.js
-// @updateURL https://raw.githubusercontent.com/byhooi/JS/master/360zy.js
+// @downloadURL  https://raw.githubusercontent.com/byhooi/JS/master/360zy.js
+// @updateURL    https://raw.githubusercontent.com/byhooi/JS/master/360zy.js
 // ==/UserScript==
 
 (function () {
@@ -70,7 +70,7 @@
 
   function copyResources() {
     const playItems = extractPlayItems();
-    const button = document.getElementById('copy-resources-btn');
+    const button = document.getElementById("copy-resources-btn");
 
     if (playItems.length === 0) {
       alert("未找到可复制的资源信息");
@@ -82,27 +82,26 @@
     try {
       GM_setClipboard(copyText);
       console.log(`成功复制 ${playItems.length} 条资源信息`);
-      
+
       // 按钮状态改变
       button.textContent = "已复制";
       button.style.backgroundColor = "#28a745";
       button.disabled = true;
-      
+
       // 2秒后恢复按钮状态
       setTimeout(() => {
         button.textContent = "复制资源";
         button.style.backgroundColor = "#007bff";
         button.disabled = false;
       }, 2000);
-      
     } catch (error) {
       console.error("复制失败:", error);
-      
+
       // 复制失败时显示状态
       button.textContent = "复制失败";
       button.style.backgroundColor = "#dc3545";
       button.disabled = true;
-      
+
       // 2秒后恢复按钮状态
       setTimeout(() => {
         button.textContent = "复制资源";
