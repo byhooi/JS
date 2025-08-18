@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         极速资源复制按钮
 // @namespace    http://github.com/byhooi
-// @version      2.3
+// @version      2.4
 // @description  在vod-list后添加一个按钮，点击按钮后复制vod-list内容到剪贴板。
 // @match        https://jisuzy.com/index.php/vod/detail/id/*.html?ac=detail
 // @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/jszy.js
@@ -140,6 +140,12 @@
                     targetParagraph.appendChild(copyButton);
                 }
             }
+        });
+
+        // 滚动到页面底部
+        window.scrollTo({
+            top: document.body.scrollHeight,
+            behavior: 'smooth'
         });
     }
 
