@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         极速资源复制按钮
 // @namespace    http://github.com/byhooi
-// @version      2.3
-// @description  在vod-list后添加一个按钮，点击按钮后复制vod-list内容到剪贴板。
+// @version      2.4
+// @description  在vod-list前添加复制按钮，并将vod-list内容降序排列。
 // @match        https://jisuzy.com/index.php/vod/detail/id/*.html?ac=detail
 // @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/jszy.js
 // @updateURL https://raw.githubusercontent.com/byhooi/JS/master/jszy.js
@@ -36,6 +36,7 @@
                     font-weight: 500;
                     transition: all 0.3s ease;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    margin-bottom: 10px;
                 }
                 .js-copy-btn:hover {
                     background: linear-gradient(135deg, #45a049, #3d8b40);
@@ -48,6 +49,10 @@
                 }
                 .js-copy-btn.success {
                     background: linear-gradient(135deg, #45a049, #2e7d32);
+                }
+                .js-button-container {
+                    margin-bottom: 15px;
+                    text-align: center;
                 }
             `
         }
@@ -78,6 +83,7 @@
                 const textToCopy = Array.from(listTitleElements)
                     .map(element => element.innerText.trim())
                     .filter(text => text.length > 0)
+                    .reverse()
                     .join('\n');
 
                 if (!textToCopy) {
@@ -100,6 +106,20 @@
 
         button.addEventListener('click', handleClick);
         return button;
+    }
+
+    function reorderVodList(vodListElement) {
+        const listItems = vodListElement.querySelectorAll(CONFIG.selectors.listTitle);
+        const parentElement = listItems[0]?.parentNode;
+        
+        if (parentElement && listItems.length > 0) {
+            const itemsArray = Array.from(listItems);
+            itemsArray.reverse();
+            
+            itemsArray.forEach(item => {
+                parentElement.appendChild(item);
+            });
+        }
     }
 
     function showFeedback(button, message, type) {
@@ -135,9 +155,16 @@
             if (targetParagraph) {
                 const existingButton = targetParagraph.querySelector('.js-copy-btn');
                 if (!existingButton) {
+                    reorderVodList(vodListElement);
+                    
+                    const buttonContainer = document.createElement('div');
+                    buttonContainer.className = 'js-button-container';
+                    
                     const copyButton = createCopyButton(vodListElement);
+                    buttonContainer.appendChild(copyButton);
+                    
                     targetParagraph.innerHTML = '';
-                    targetParagraph.appendChild(copyButton);
+                    targetParagraph.appendChild(buttonContainer);
                 }
             }
         });
