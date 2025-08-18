@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         卧龙资源复制全部
 // @namespace    http://github.com/byhooi
-// @version      2.9
+// @version      3.0
 // @description  修复卧龙资源复制问题， filterkeyword 配置过滤内容
 // @match        https://wolongzy.cc/index.php/vod/detail/id/*.html
 // @match        https://wolongzyw.com/index.php/vod/detail/id/*.html
@@ -117,11 +117,13 @@
                 behavior: 'smooth'
             });
             
-            // 同时滚动 playlist 区域到底部
-            const playlistContainer = document.querySelector('#content .playlist');
-            if (playlistContainer) {
-                playlistContainer.scrollTop = playlistContainer.scrollHeight;
-            }
+            // 延迟滚动 playlist 区域，确保元素完全加载
+            setTimeout(() => {
+                const playlistContainer = document.querySelector('#content .playlist');
+                if (playlistContainer) {
+                    playlistContainer.scrollTop = playlistContainer.scrollHeight;
+                }
+            }, 500);
         }
 
         setupCopyAllButton();
