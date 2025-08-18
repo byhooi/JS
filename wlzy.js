@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         卧龙资源复制全部
 // @namespace    http://github.com/byhooi
-// @version      3.1
+// @version      3.2
 // @description  修复卧龙资源复制问题， filterkeyword 配置过滤内容
 // @match        https://wolongzy.cc/index.php/vod/detail/id/*.html
 // @match        https://wolongzyw.com/index.php/vod/detail/id/*.html
@@ -119,7 +119,7 @@
             
             // 延迟滚动 playlist 区域，确保元素完全加载
             setTimeout(() => {
-                const playlistContainer = document.querySelector('#content .playlist.wbox');
+                const playlistContainer = document.querySelector('#content .playlist.wbox ul');
                 if (playlistContainer) {
                     playlistContainer.scrollTop = playlistContainer.scrollHeight;
                 }
