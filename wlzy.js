@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         卧龙资源复制全部
 // @namespace    http://github.com/byhooi
-// @version      2.7
+// @version      2.9
 // @description  修复卧龙资源复制问题， filterkeyword 配置过滤内容
 // @match        https://wolongzy.cc/index.php/vod/detail/id/*.html
 // @match        https://wolongzyw.com/index.php/vod/detail/id/*.html
@@ -111,10 +111,17 @@
         }
 
         function scrollToBottom() {
+            // 滚动整个页面到底部
             window.scrollTo({
                 top: document.body.scrollHeight,
                 behavior: 'smooth'
             });
+            
+            // 同时滚动 playlist 区域到底部
+            const playlistContainer = document.querySelector('#content .playlist');
+            if (playlistContainer) {
+                playlistContainer.scrollTop = playlistContainer.scrollHeight;
+            }
         }
 
         setupCopyAllButton();
