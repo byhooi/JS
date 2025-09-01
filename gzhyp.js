@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         微信公众号音频下载
 // @namespace    http://github.com/byhooi
-// @version      1.2
+// @version      1.3
 // @description  下载微信公众号中播放的音频文件
 // @match        https://mp.weixin.qq.com/*
 // @grant        GM_setClipboard
@@ -112,14 +112,8 @@
             this.updateButtonState(CONSTANTS.DOWNLOADING_TEXT, { backgroundColor: '#FF9800' });
 
             try {
-                // 创建一个隐藏的a标签触发下载，让IDM自动捕获
-                const a = document.createElement('a');
-                a.href = this.latestAudioSrc;
-                a.download = `audio_${new Date().getTime()}.mp3`;
-                a.style.display = 'none';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
+                // 使用window.open在新窗口中打开下载链接，避免页面跳转
+                window.open(this.latestAudioSrc, '_blank');
 
                 this.updateButtonState(CONSTANTS.DOWNLOADED_TEXT, { backgroundColor: '#4CAF50' });
                 setTimeout(() => {
