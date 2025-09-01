@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         MP3链接复制
+// @name         MP3下载
 // @namespace    http://github.com/byhooi
-// @version      1.1
-// @description  MP3的下载链接
+// @version      2.0
+// @description  MP3下载工具
 // @match        https://basic.smartedu.cn/*
 // @grant        GM_setClipboard
 // @grant        GM_xmlhttpRequest
@@ -17,34 +17,41 @@
     initializeAccessToken();
     
     // 创建复制按钮
-    const copyButton = document.createElement('button');
-    copyButton.textContent = '复制MP3链接';
-    copyButton.style.position = 'fixed';
-    copyButton.style.top = '50px';
-    copyButton.style.right = '10px';
-    copyButton.style.zIndex = '9999';
-    copyButton.style.padding = '10px 15px';
-    copyButton.style.backgroundColor = '#FF9800';
-    copyButton.style.color = 'white';
-    copyButton.style.border = 'none';
-    copyButton.style.borderRadius = '5px';
-    copyButton.style.cursor = 'pointer';
-    copyButton.style.display = 'none';
-    copyButton.style.transition = 'all 0.3s ease';
+    const downloadButton = document.createElement('button');
+    downloadButton.textContent = '下载MP3';
+    downloadButton.style.position = 'fixed';
+    downloadButton.style.top = '50px';
+    downloadButton.style.right = '10px';
+    downloadButton.style.zIndex = '9999';
+    downloadButton.style.padding = '10px 15px';
+    downloadButton.style.backgroundColor = '#FF9800';
+    downloadButton.style.color = 'white';
+    downloadButton.style.border = 'none';
+    downloadButton.style.borderRadius = '5px';
+    downloadButton.style.cursor = 'pointer';
+    downloadButton.style.display = 'none';
+    downloadButton.style.transition = 'all 0.3s ease';
 
-    // 复制功能
-    copyButton.addEventListener('click', function() {
+    // 下载功能
+    downloadButton.addEventListener('click', function() {
         const mp3WithToken = addAccessTokenToUrl(mp3Link);
-        GM_setClipboard(mp3WithToken);
-        console.log('MP3直接链接已复制到剪贴板');
+        console.log('MP3链接:', mp3Link);
+        console.log('处理后的MP3链接:', mp3WithToken);
+        console.log('AccessToken:', accessToken);
         
-        copyButton.textContent = '已复制';
-        copyButton.style.backgroundColor = '#333';
+        downloadButton.textContent = '下载中...';
+        downloadButton.style.backgroundColor = '#FF9800';
+        
+        // 使用window.open在新窗口中打开下载链接
+        window.open(mp3WithToken, '_blank');
+        
+        downloadButton.textContent = '已下载';
+        downloadButton.style.backgroundColor = '#4CAF50';
         
         setTimeout(() => {
-            copyButton.style.display = 'none';
-            copyButton.textContent = '复制MP3链接';
-            copyButton.style.backgroundColor = '#FF9800';
+            downloadButton.style.display = 'none';
+            downloadButton.textContent = '下载MP3';
+            downloadButton.style.backgroundColor = '#FF9800';
         }, 2000);
     });
 
@@ -62,7 +69,7 @@
             if (url && url.includes('.mp3')) {
                 mp3Link = url;
                 console.log('找到MP3链接 (XHR):', mp3Link);
-                copyButton.style.display = 'block';
+                downloadButton.style.display = 'block';
             }
             return originalOpen.apply(this, [method, url, ...args]);
         };
@@ -74,7 +81,7 @@
                 if (xhr.responseURL && xhr.responseURL.includes('.mp3')) {
                     mp3Link = xhr.responseURL;
                     console.log('找到MP3链接 (XHR响应):', mp3Link);
-                    copyButton.style.display = 'block';
+                    downloadButton.style.display = 'block';
                 }
                 if (originalOnload) originalOnload.apply(this, arguments);
             };
@@ -91,7 +98,7 @@
         if (url && url.includes('.mp3')) {
             mp3Link = url;
             console.log('找到MP3链接 (Fetch):', mp3Link);
-            copyButton.style.display = 'block';
+            downloadButton.style.display = 'block';
         }
         
         // 拦截响应以检查重定向的URL
@@ -100,14 +107,14 @@
             if (response.url && response.url.includes('.mp3')) {
                 mp3Link = response.url;
                 console.log('找到MP3链接 (Fetch响应):', mp3Link);
-                copyButton.style.display = 'block';
+                downloadButton.style.display = 'block';
             }
         }).catch(e => console.log('Fetch error:', e));
         
         return fetchPromise;
     };
 
-    document.body.appendChild(copyButton);
+    document.body.appendChild(downloadButton);
 
     // 在DOM中查找MP3链接
     function findMP3LinkInDOM() {
@@ -117,7 +124,7 @@
             if (href) {
                 mp3Link = decodeURIComponent(href);
                 console.log('在DOM中找到MP3链接:', mp3Link);
-                copyButton.style.display = 'block';
+                downloadButton.style.display = 'block';
                 return true;
             }
         }
@@ -131,7 +138,7 @@
             if (entry.name.includes('.mp3')) {
                 mp3Link = entry.name;
                 console.log('Performance API找到MP3链接:', mp3Link);
-                copyButton.style.display = 'block';
+                downloadButton.style.display = 'block';
                 return true;
             }
         }
@@ -145,7 +152,7 @@
                 if (entry.name.includes('.mp3')) {
                     mp3Link = entry.name;
                     console.log('PerformanceObserver找到MP3链接:', mp3Link);
-                    copyButton.style.display = 'block';
+                    downloadButton.style.display = 'block';
                 }
             }
         });

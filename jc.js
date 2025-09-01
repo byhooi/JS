@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         PDF链接复制
+// @name         PDF下载
 // @namespace    http://github.com/byhooi
-// @version      2.6
-// @description  PDF的下载链接
+// @version      3.0
+// @description  PDF下载工具
 // @match        https://basic.smartedu.cn/tchMaterial/*
 // @grant        GM_setClipboard
 // @grant        GM_xmlhttpRequest
@@ -17,34 +17,41 @@
     initializeAccessToken();
     
     // 创建复制按钮
-    const copyButton = document.createElement('button');
-    copyButton.textContent = '复制PDF链接';
-    copyButton.style.position = 'fixed';
-    copyButton.style.top = '10px';
-    copyButton.style.right = '10px';
-    copyButton.style.zIndex = '9999';
-    copyButton.style.padding = '10px 15px';
-    copyButton.style.backgroundColor = '#4CAF50';
-    copyButton.style.color = 'white';
-    copyButton.style.border = 'none';
-    copyButton.style.borderRadius = '5px';
-    copyButton.style.cursor = 'pointer';
-    copyButton.style.display = 'none'; // 初始状态为隐藏
-    copyButton.style.transition = 'all 0.3s ease';
+    const downloadButton = document.createElement('button');
+    downloadButton.textContent = '下载PDF';
+    downloadButton.style.position = 'fixed';
+    downloadButton.style.top = '10px';
+    downloadButton.style.right = '10px';
+    downloadButton.style.zIndex = '9999';
+    downloadButton.style.padding = '10px 15px';
+    downloadButton.style.backgroundColor = '#4CAF50';
+    downloadButton.style.color = 'white';
+    downloadButton.style.border = 'none';
+    downloadButton.style.borderRadius = '5px';
+    downloadButton.style.cursor = 'pointer';
+    downloadButton.style.display = 'none'; // 初始状态为隐藏
+    downloadButton.style.transition = 'all 0.3s ease';
 
-    // 修改复制功能
-    copyButton.addEventListener('click', function() {
+    // 修改下载功能
+    downloadButton.addEventListener('click', function() {
         const decodedLink = extractDirectPDFLink(pdfLink);
-        GM_setClipboard(decodedLink);
-        console.log('PDF直接链接已复制到剪贴板');
+        console.log('PDF链接:', pdfLink);
+        console.log('处理后的PDF链接:', decodedLink);
+        console.log('AccessToken:', accessToken);
         
-        copyButton.textContent = '已复制';
-        copyButton.style.backgroundColor = '#333';
+        downloadButton.textContent = '下载中...';
+        downloadButton.style.backgroundColor = '#FF9800';
+        
+        // 使用window.open在新窗口中打开下载链接
+        window.open(decodedLink, '_blank');
+        
+        downloadButton.textContent = '已下载';
+        downloadButton.style.backgroundColor = '#4CAF50';
         
         setTimeout(() => {
-            copyButton.style.display = 'none';
-            copyButton.textContent = '复制PDF链接';
-            copyButton.style.backgroundColor = '#4CAF50';
+            downloadButton.style.display = 'none';
+            downloadButton.textContent = '下载PDF';
+            downloadButton.style.backgroundColor = '#4CAF50';
         }, 2000);
     });
 
@@ -61,7 +68,7 @@
             if (potentialPDFLink.includes('.pdf')) {
                 pdfLink = potentialPDFLink;
                 console.log('找到PDF链接:', pdfLink);
-                copyButton.style.display = 'block';
+                downloadButton.style.display = 'block';
             }
             originalOpen.apply(this, arguments);
         };
@@ -76,12 +83,12 @@
         if (potentialPDFLink.includes('.pdf')) {
             pdfLink = potentialPDFLink;
             console.log('找到PDF链接 (Fetch):', pdfLink);
-            copyButton.style.display = 'block';
+            downloadButton.style.display = 'block';
         }
         return originalFetch.apply(this, arguments);
     };
 
-    document.body.appendChild(copyButton);
+    document.body.appendChild(downloadButton);
 
     function findPDFLinkInDOM() {
         const links = document.querySelectorAll('a[href*=".pdf"], iframe[src*=".pdf"], embed[src*=".pdf"], object[data*=".pdf"]');
@@ -90,7 +97,7 @@
             if (href) {
                 pdfLink = decodeURIComponent(href);
                 console.log('在DOM中找到PDF链接:', pdfLink);
-                copyButton.style.display = 'block';
+                downloadButton.style.display = 'block';
                 return true;
             }
         }
