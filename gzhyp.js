@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         微信公众号音频地址复制
+// @name         微信公众号音频下载
 // @namespace    http://github.com/byhooi
-// @version      1.1
-// @description  复制微信公众号中播放的音频文件地址
+// @version      1.2
+// @description  下载微信公众号中播放的音频文件
 // @match        https://mp.weixin.qq.com/*
 // @grant        GM_setClipboard
 // @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/gzhyp.js
@@ -19,7 +19,7 @@
             right: '10px',
             zIndex: '9999',
             padding: '10px 15px',
-            backgroundColor: '#4CAF50',
+            backgroundColor: '#2196F3',
             color: 'white',
             border: 'none',
             borderRadius: '5px',
@@ -32,6 +32,9 @@
         buttonCopied: {
             backgroundColor: '#333'
         },
+        buttonDownloading: {
+            backgroundColor: '#FF9800'
+        },
         buttonHidden: {
             display: 'none'
         },
@@ -43,12 +46,13 @@
     const CONSTANTS = {
         AUDIO_API_URL: 'res.wx.qq.com/voice/getvoice',
         HIDE_DELAY: 2000,
-        ORIGINAL_TEXT: '复制音频地址',
-        COPIED_TEXT: '已复制',
-        ERROR_TEXT: '复制失败'
+        ORIGINAL_TEXT: '下载音频',
+        DOWNLOADING_TEXT: '下载中...',
+        DOWNLOADED_TEXT: '已下载',
+        ERROR_TEXT: '下载失败'
     };
 
-    class AudioCopyButton {
+    class AudioDownloadButton {
         constructor() {
             this.latestAudioSrc = '';
             this.button = null;
@@ -95,43 +99,43 @@
             this.applyStyles(this.button, additionalStyles);
         }
 
-        async copyToClipboard() {
-            if (!this.latestAudioSrc) {
-                return false;
-            }
-
-            try {
-                if (typeof GM_setClipboard === 'function') {
-                    GM_setClipboard(this.latestAudioSrc);
-                    return true;
-                } else if (navigator.clipboard && navigator.clipboard.writeText) {
-                    await navigator.clipboard.writeText(this.latestAudioSrc);
-                    return true;
-                }
-                return false;
-            } catch (error) {
-                console.error('Failed to copy audio URL:', error);
-                return false;
-            }
-        }
 
         async handleButtonClick() {
-            const success = await this.copyToClipboard();
-            
-            if (success) {
-                this.updateButtonState(CONSTANTS.COPIED_TEXT, STYLES.buttonCopied);
-                this.hideTimeout = setTimeout(() => {
+            if (!this.latestAudioSrc) {
+                this.updateButtonState(CONSTANTS.ERROR_TEXT, { backgroundColor: '#f44336' });
+                setTimeout(() => {
+                    this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
+                }, CONSTANTS.HIDE_DELAY);
+                return;
+            }
+
+            this.updateButtonState(CONSTANTS.DOWNLOADING_TEXT, { backgroundColor: '#FF9800' });
+
+            try {
+                // 创建一个隐藏的a标签触发下载，让IDM自动捕获
+                const a = document.createElement('a');
+                a.href = this.latestAudioSrc;
+                a.download = `audio_${new Date().getTime()}.mp3`;
+                a.style.display = 'none';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+
+                this.updateButtonState(CONSTANTS.DOWNLOADED_TEXT, { backgroundColor: '#4CAF50' });
+                setTimeout(() => {
                     this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
                     this.hideButton();
                 }, CONSTANTS.HIDE_DELAY);
-            } else {
+            } catch (error) {
+                console.error('Failed to download audio:', error);
                 this.updateButtonState(CONSTANTS.ERROR_TEXT, { backgroundColor: '#f44336' });
-                this.hideTimeout = setTimeout(() => {
+                setTimeout(() => {
                     this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
                 }, CONSTANTS.HIDE_DELAY);
             }
         }
 
+  
         setupEventListeners() {
             this.button.addEventListener('click', () => this.handleButtonClick());
 
@@ -181,8 +185,8 @@
     }
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => new AudioCopyButton());
+        document.addEventListener('DOMContentLoaded', () => new AudioDownloadButton());
     } else {
-        new AudioCopyButton();
+        new AudioDownloadButton();
     }
 })();
