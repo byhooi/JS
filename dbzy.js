@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         豆瓣资源复制全部
 // @namespace    http://github.com/byhooi
-// @version      1.0
+// @version      1.1
 // @description  修复豆瓣资源复制问题，支持复制链接、复制名称$链接、复制名称$链接$线路
 // @match        https://dbzy.tv/voddetail/*.html?ac=detail
+// @match        https://dbzy1.com/voddetail/*.html?ac=detail
 // @grant        none
 // @run-at       document-start
 // @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/dbzy.js
