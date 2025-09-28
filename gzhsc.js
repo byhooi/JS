@@ -8,6 +8,8 @@
 // @match        https://mp.weixin.qq.com/cgi-bin/filepage*
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @grant        GM_setClipboard
+// @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/gzhsc.js
+// @updateURL https://raw.githubusercontent.com/byhooi/JS/master/gzhsc.js
 // ==/UserScript==
 
 (function () {
