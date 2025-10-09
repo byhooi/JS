@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         微信素材库复制图片链接
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @description  在微信公众号素材库页面，添加“复制链接”按钮，点击后复制图片URL到剪贴板
 // @author       Codex
 // @match        https://mp.weixin.qq.com/cgi-bin/appmsg*
@@ -15,10 +15,22 @@
 (function () {
     'use strict';
 
-    const $ = window.jQuery.noConflict(true);
+    const original$ = window.$;
+    const originalJQuery = window.jQuery;
+    const $ = window.jQuery.noConflict();
+    if (originalJQuery && originalJQuery !== $) {
+        window.jQuery = originalJQuery;
+    }
+    if (typeof original$ !== 'undefined' && original$ !== $) {
+        window.$ = original$;
+    }
+
     const STYLE_ID = 'gzhsc-copy-style';
     const BUTTON_CLASS = 'weui-desktop-icon-btnxx';
     const ITEM_PROCESSED_FLAG = 'gzhscCopyReady';
+    const ITEM_SELECTOR = '.weui-desktop-img-picker__item';
+    const TOOLTIP_SELECTOR = '.weui-desktop-tooltip__wrp.weui-desktop-link';
+    const IMAGE_SELECTOR = 'i.weui-desktop-img-picker__img-thumb, .weui-desktop-img-picker__img-thumb, img';
 
     if (!document.getElementById(STYLE_ID)) {
         const style = `
@@ -63,15 +75,70 @@
         }, 2000);
     }
 
-    function extractUrl($img) {
-        const style = $img.attr('style') || '';
-        const urlMatch = style.match(/url\(["']?(.*?)["']?\)/);
-        if (!urlMatch || !urlMatch[1]) {
+    function normalizeUrl(rawUrl) {
+        if (!rawUrl) {
+            return null;
+        }
+        const trimmed = rawUrl.trim().replace(/^url\((['"]?)(.+?)\1\)$/, '$2');
+        if (!trimmed || trimmed.toLowerCase() === 'none') {
+            return null;
+        }
+        if (trimmed.startsWith('//')) {
+            return `https:${trimmed}`;
+        }
+        if (trimmed.startsWith('/')) {
+            try {
+                return new URL(trimmed, window.location.origin).href;
+            } catch (_) {
+                return null;
+            }
+        }
+        return trimmed;
+    }
+
+    function getImageElement($item) {
+        const element = $item.find(IMAGE_SELECTOR).get(0);
+        if (element) {
+            return element;
+        }
+        return null;
+    }
+
+    function extractUrlFromElement(element) {
+        if (!element) {
             return null;
         }
 
-        const url = urlMatch[1];
-        return url.startsWith('//') ? `https:${url}` : url;
+        const attributeCandidates = [
+            element.getAttribute('data-src'),
+            element.getAttribute('data-original'),
+            element.getAttribute('data-background-image'),
+            element.getAttribute('src')
+        ];
+        if (element.dataset) {
+            attributeCandidates.push(element.dataset.src, element.dataset.original);
+        }
+
+        for (const candidate of attributeCandidates) {
+            const url = normalizeUrl(candidate);
+            if (url) {
+                return url;
+            }
+        }
+
+        const styleAttr = element.getAttribute('style');
+        const inlineUrl = normalizeUrl(styleAttr && styleAttr.match(/url\((.*?)\)/)?.[1]);
+        if (inlineUrl) {
+            return inlineUrl;
+        }
+
+        const computedStyle = window.getComputedStyle(element);
+        const backgroundUrl = normalizeUrl(computedStyle.backgroundImage);
+        if (backgroundUrl && backgroundUrl !== 'none') {
+            return backgroundUrl;
+        }
+
+        return null;
     }
 
     function attachButtonToItem(item) {
@@ -80,15 +147,17 @@
             return;
         }
 
-        const $tooltipWrp = $item.find('.weui-desktop-tooltip__wrp.weui-desktop-link').first();
+        const $tooltipWrp = $item.find(TOOLTIP_SELECTOR).first();
         if (!$tooltipWrp.length) {
             return;
         }
 
         const tooltipRight = parseFloat($tooltipWrp.css('right')) || 0;
+        const tooltipWidth = $tooltipWrp.outerWidth() || parseFloat(window.getComputedStyle($tooltipWrp.get(0)).width) || 36;
+        const spacing = 8;
         const $newButton = $('<div>', {
             class: 'weui-desktop-tooltip__wrp weui-desktop-link'
-        }).css('right', `${tooltipRight + 48}px`).append(
+        }).css('right', `${tooltipRight + tooltipWidth + spacing}px`).append(
             $('<button>', {
                 class: BUTTON_CLASS,
                 text: 'URL',
@@ -98,25 +167,12 @@
 
         $newButton.insertBefore($tooltipWrp);
 
-        $newButton.find('button').on('click', () => {
-            const $img = $item.find('i.weui-desktop-img-picker__img-thumb').first();
-            const imgUrl = extractUrl($img);
-
-            if (!imgUrl) {
-                showToptips('未找到有效的图片URL');
-                return;
-            }
-
-            GM_setClipboard(imgUrl);
-            showToptips('图片URL已复制到剪贴板');
-        });
-
         $item.data(ITEM_PROCESSED_FLAG, true);
     }
 
     function enhanceExistingItems(root) {
         $(root)
-            .find('.weui-desktop-img-picker__item')
+            .find(ITEM_SELECTOR)
             .each((_, element) => attachButtonToItem(element));
     }
 
@@ -129,18 +185,50 @@
                     return;
                 }
 
-                if (node.classList.contains('weui-desktop-img-picker__item')) {
+                if (node.matches && node.matches(ITEM_SELECTOR)) {
                     attachButtonToItem(node);
                     return;
                 }
 
-                enhanceExistingItems(node);
+                if (node.querySelectorAll) {
+                    node.querySelectorAll(ITEM_SELECTOR).forEach((element) => {
+                        attachButtonToItem(element);
+                    });
+                }
             });
         });
     });
 
-    observer.observe(document.body, {
+    const observerRoot = document.querySelector('.weui-desktop-img-picker, .weui-desktop-filepage__bd, body');
+    observer.observe(observerRoot || document.body, {
         childList: true,
         subtree: true
     });
+
+    if (!document.body.__gzhscCopyHandlerAttached) {
+        document.body.addEventListener('click', (event) => {
+            const button = event.target.closest(`.${BUTTON_CLASS}`);
+            if (!button) {
+                return;
+            }
+
+            const item = button.closest(ITEM_SELECTOR);
+            if (!item) {
+                showToptips('未找到素材元素');
+                return;
+            }
+
+            const imageElement = getImageElement($(item));
+            const imgUrl = extractUrlFromElement(imageElement);
+
+            if (!imgUrl) {
+                showToptips('未找到有效的图片URL');
+                return;
+            }
+
+            GM_setClipboard(imgUrl);
+            showToptips('图片URL已复制到剪贴板');
+        });
+        document.body.__gzhscCopyHandlerAttached = true;
+    }
 })();
