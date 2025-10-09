@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         极速资源复制按钮
 // @namespace    http://github.com/byhooi
-// @version      2.4
+// @version      2.5
 // @description  在vod-list后添加一个按钮，点击按钮后复制vod-list内容到剪贴板。
 // @match        https://jisuzy.com/index.php/vod/detail/id/*.html?ac=detail
 // @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/jszy.js
@@ -67,10 +67,52 @@
         };
     }
 
+    function execCommandCopy(text) {
+        return new Promise((resolve, reject) => {
+            try {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                textarea.style.pointerEvents = 'none';
+                document.body.appendChild(textarea);
+                textarea.focus();
+                textarea.select();
+                const ok = document.execCommand('copy');
+                document.body.removeChild(textarea);
+                if (ok) {
+                    resolve();
+                } else {
+                    reject(new Error('复制失败'));
+                }
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+
+    async function writeToClipboard(text) {
+        if (!text || !text.trim()) {
+            throw new Error('没有可复制的内容');
+        }
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            try {
+                await navigator.clipboard.writeText(text);
+                return;
+            } catch (error) {
+                console.warn('navigator.clipboard 写入失败，尝试回退', error);
+            }
+        }
+
+        await execCommandCopy(text);
+    }
+
     function createCopyButton(vodListElement) {
         const button = document.createElement('button');
         button.className = 'js-copy-btn';
         button.textContent = CONFIG.button.text;
+        button.dataset.originalText = CONFIG.button.text;
         
         const handleClick = debounce(async () => {
             try {
@@ -82,10 +124,11 @@
 
                 if (!textToCopy) {
                     showFeedback(button, '没有可复制的内容', 'warning');
+                    setTimeout(() => resetButton(button), CONFIG.button.resetDelay);
                     return;
                 }
 
-                await navigator.clipboard.writeText(textToCopy);
+                await writeToClipboard(textToCopy);
                 showFeedback(button, CONFIG.button.successText, 'success');
                 
                 setTimeout(() => {
@@ -94,7 +137,10 @@
 
             } catch (err) {
                 console.error('复制失败:', err);
-                showFeedback(button, '复制失败', 'error');
+                showFeedback(button, err.message || '复制失败', 'error');
+                setTimeout(() => {
+                    resetButton(button);
+                }, CONFIG.button.resetDelay);
             }
         }, 300);
 
@@ -103,7 +149,9 @@
     }
 
     function showFeedback(button, message, type) {
-        const originalText = button.textContent;
+        if (!button.dataset.originalText) {
+            button.dataset.originalText = button.textContent;
+        }
         button.textContent = message;
         
         if (type === 'success') {
@@ -116,7 +164,7 @@
     }
 
     function resetButton(button) {
-        button.textContent = CONFIG.button.text;
+        button.textContent = button.dataset.originalText || CONFIG.button.text;
         button.classList.remove('success');
         button.style.background = '';
     }
@@ -136,7 +184,6 @@
                 const existingButton = targetParagraph.querySelector('.js-copy-btn');
                 if (!existingButton) {
                     const copyButton = createCopyButton(vodListElement);
-                    targetParagraph.innerHTML = '';
                     targetParagraph.appendChild(copyButton);
                 }
             }
