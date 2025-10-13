@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         卧龙资源复制全部
 // @namespace    http://github.com/byhooi
-// @version      3.3
+// @version      3.4
 // @description  修复卧龙资源复制问题， filterkeyword 配置过滤内容
 // @match        https://wolongzy.cc/index.php/vod/detail/id/*.html
 // @match        https://wolongzyw.com/index.php/vod/detail/id/*.html
@@ -17,7 +17,7 @@
     function initScript() {
         // 配置过滤关键词，留空则不过滤任何内容
         const filterKeyword = '';
-        const enableAutoScroll = false;
+        const enableAutoScroll = true;
         let singleCopyHandlerAttached = false;
 
         function debounce(fn, wait = 200) {
