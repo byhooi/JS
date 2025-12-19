@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         微信素材库复制图片链接
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.2
 // @description  在微信公众号素材库页面，添加“复制链接”按钮，点击后复制图片URL到剪贴板
 // @author       Codex
 // @match        https://mp.weixin.qq.com/cgi-bin/appmsg*
@@ -79,7 +79,9 @@
         if (!rawUrl) {
             return null;
         }
-        const trimmed = rawUrl.trim().replace(/^url\((['"]?)(.+?)\1\)$/, '$2');
+        let trimmed = rawUrl.trim().replace(/^url\((['"]?)(.+?)\1\)$/, '$2');
+        // 移除可能残留的首尾引号
+        trimmed = trimmed.replace(/^['"]|['"]$/g, '');
         if (!trimmed || trimmed.toLowerCase() === 'none') {
             return null;
         }
