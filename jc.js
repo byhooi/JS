@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PDF下载
 // @namespace    http://github.com/byhooi
-// @version      3.1
+// @version      3.2
 // @description  PDF下载工具
 // @match        https://basic.smartedu.cn/tchMaterial/*
 // @grant        GM_setClipboard
@@ -42,8 +42,14 @@
         downloadButton.textContent = '下载中...';
         downloadButton.style.backgroundColor = '#FF9800';
 
-        // 使用window.open在新窗口中打开下载链接
-        window.open(decodedLink, '_blank');
+        // 创建临时链接并模拟点击，以更好地触发下载器
+        const link = document.createElement('a');
+        link.href = decodedLink;
+        // 尝试使用 download 属性（虽跨域可能受限，但能提示浏览器下载意图）
+        link.download = 'download.pdf';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
 
         downloadButton.textContent = '已下载';
         downloadButton.style.backgroundColor = '#4CAF50';
