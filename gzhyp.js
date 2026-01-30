@@ -4,12 +4,13 @@
 // @version      1.2
 // @description  下载微信公众号中播放的音频文件
 // @match        https://mp.weixin.qq.com/*
+// @grant        GM_download
 // @grant        GM_setClipboard
 // @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/gzhyp.js
 // @updateURL https://raw.githubusercontent.com/byhooi/JS/master/gzhyp.js
 // ==/UserScript==
 
-(function() {
+(function () {
     'use strict';
 
     const STYLES = {
@@ -111,31 +112,31 @@
 
             this.updateButtonState(CONSTANTS.DOWNLOADING_TEXT, { backgroundColor: '#FF9800' });
 
-            try {
-                // 创建一个隐藏的a标签触发下载，让IDM自动捕获
-                const a = document.createElement('a');
-                a.href = this.latestAudioSrc;
-                a.download = `audio_${new Date().getTime()}.mp3`;
-                a.style.display = 'none';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
+            const fileName = `audio_${new Date().getTime()}.mp3`;
 
-                this.updateButtonState(CONSTANTS.DOWNLOADED_TEXT, { backgroundColor: '#4CAF50' });
-                setTimeout(() => {
-                    this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
-                    this.hideButton();
-                }, CONSTANTS.HIDE_DELAY);
-            } catch (error) {
-                console.error('Failed to download audio:', error);
-                this.updateButtonState(CONSTANTS.ERROR_TEXT, { backgroundColor: '#f44336' });
-                setTimeout(() => {
-                    this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
-                }, CONSTANTS.HIDE_DELAY);
-            }
+            // 使用 GM_download 进行下载，它能更好地处理跨域和文件保存
+            GM_download({
+                url: this.latestAudioSrc,
+                name: fileName,
+                saveAs: true, // 提示用户保存文件，这也更容易被 IDM 捕获
+                onload: () => {
+                    this.updateButtonState(CONSTANTS.DOWNLOADED_TEXT, { backgroundColor: '#4CAF50' });
+                    setTimeout(() => {
+                        this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
+                        this.hideButton();
+                    }, CONSTANTS.HIDE_DELAY);
+                },
+                onerror: (error) => {
+                    console.error('Failed to download audio:', error);
+                    this.updateButtonState(CONSTANTS.ERROR_TEXT, { backgroundColor: '#f44336' });
+                    setTimeout(() => {
+                        this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
+                    }, CONSTANTS.HIDE_DELAY);
+                }
+            });
         }
 
-  
+
         setupEventListeners() {
             this.button.addEventListener('click', () => this.handleButtonClick());
 
@@ -157,11 +158,11 @@
             const originalXHR = window.XMLHttpRequest;
             const self = this;
 
-            window.XMLHttpRequest = function() {
+            window.XMLHttpRequest = function () {
                 const xhr = new originalXHR();
                 const originalOpen = xhr.open;
 
-                xhr.open = function(method, url, ...args) {
+                xhr.open = function (method, url, ...args) {
                     if (typeof url === 'string' && url.includes(CONSTANTS.AUDIO_API_URL)) {
                         self.setAudioSource(url);
                     }
@@ -173,7 +174,7 @@
 
             if (window.fetch) {
                 const originalFetch = window.fetch;
-                window.fetch = function(input, ...args) {
+                window.fetch = function (input, ...args) {
                     const url = typeof input === 'string' ? input : input.url;
                     if (url && url.includes(CONSTANTS.AUDIO_API_URL)) {
                         self.setAudioSource(url);
