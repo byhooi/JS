@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         微信公众号音频下载
 // @namespace    http://github.com/byhooi
-// @version      1.5
+// @version      1.2
 // @description  下载微信公众号中播放的音频文件
 // @match        https://mp.weixin.qq.com/*
-// @grant        GM_download
+// @grant        GM_setClipboard
 // @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/gzhyp.js
 // @updateURL https://raw.githubusercontent.com/byhooi/JS/master/gzhyp.js
 // ==/UserScript==
@@ -29,14 +29,11 @@
             boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
             transition: 'all 0.3s ease'
         },
+        buttonCopied: {
+            backgroundColor: '#333'
+        },
         buttonDownloading: {
             backgroundColor: '#FF9800'
-        },
-        buttonSuccess: {
-            backgroundColor: '#4CAF50'
-        },
-        buttonError: {
-            backgroundColor: '#f44336'
         },
         buttonHidden: {
             display: 'none'
@@ -47,13 +44,12 @@
     };
 
     const CONSTANTS = {
-        AUDIO_PATH_KEYWORD: '/voice/getvoice',
+        AUDIO_API_URL: 'res.wx.qq.com/voice/getvoice',
         HIDE_DELAY: 2000,
         ORIGINAL_TEXT: '下载音频',
         DOWNLOADING_TEXT: '下载中...',
         DOWNLOADED_TEXT: '已下载',
-        ERROR_TEXT: '下载失败',
-        FALLBACK_FILE_NAME: 'wx-audio.mp3'
+        ERROR_TEXT: '下载失败'
     };
 
     class AudioDownloadButton {
@@ -89,7 +85,6 @@
 
         hideButton() {
             this.applyStyles(this.button, STYLES.buttonHidden);
-            this.clearHideTimeout();
         }
 
         clearHideTimeout() {
@@ -101,203 +96,91 @@
 
         updateButtonState(text, additionalStyles = {}) {
             this.button.textContent = text;
-            this.applyStyles(this.button, STYLES.button);
             this.applyStyles(this.button, additionalStyles);
         }
 
 
         async handleButtonClick() {
             if (!this.latestAudioSrc) {
-                this.updateButtonState(CONSTANTS.ERROR_TEXT, STYLES.buttonError);
-                this.hideTimeout = setTimeout(() => {
-                    this.updateButtonState(CONSTANTS.ORIGINAL_TEXT);
-                    this.hideTimeout = null;
+                this.updateButtonState(CONSTANTS.ERROR_TEXT, { backgroundColor: '#f44336' });
+                setTimeout(() => {
+                    this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
                 }, CONSTANTS.HIDE_DELAY);
                 return;
             }
 
-            this.clearHideTimeout();
-            this.updateButtonState(CONSTANTS.DOWNLOADING_TEXT, STYLES.buttonDownloading);
+            this.updateButtonState(CONSTANTS.DOWNLOADING_TEXT, { backgroundColor: '#FF9800' });
 
             try {
-                await this.triggerDownload(this.latestAudioSrc);
+                // 创建一个隐藏的a标签触发下载，让IDM自动捕获
+                const a = document.createElement('a');
+                a.href = this.latestAudioSrc;
+                a.download = `audio_${new Date().getTime()}.mp3`;
+                a.style.display = 'none';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
 
-                this.updateButtonState(CONSTANTS.DOWNLOADED_TEXT, STYLES.buttonSuccess);
-                this.hideTimeout = setTimeout(() => {
-                    this.updateButtonState(CONSTANTS.ORIGINAL_TEXT);
+                this.updateButtonState(CONSTANTS.DOWNLOADED_TEXT, { backgroundColor: '#4CAF50' });
+                setTimeout(() => {
+                    this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
                     this.hideButton();
-                    this.hideTimeout = null;
                 }, CONSTANTS.HIDE_DELAY);
             } catch (error) {
                 console.error('Failed to download audio:', error);
-                this.updateButtonState(CONSTANTS.ERROR_TEXT, STYLES.buttonError);
-                this.hideTimeout = setTimeout(() => {
-                    this.updateButtonState(CONSTANTS.ORIGINAL_TEXT);
-                    this.hideTimeout = null;
+                this.updateButtonState(CONSTANTS.ERROR_TEXT, { backgroundColor: '#f44336' });
+                setTimeout(() => {
+                    this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
                 }, CONSTANTS.HIDE_DELAY);
             }
         }
 
- 
+  
         setupEventListeners() {
             this.button.addEventListener('click', () => this.handleButtonClick());
 
             document.addEventListener('play', (e) => {
-                if (e.target.tagName && e.target.tagName.toLowerCase() === 'audio') {
-                    const source = e.target.currentSrc || e.target.src;
-                    if (source) {
-                        this.setAudioSource(source);
-                    }
+                if (e.target.tagName.toLowerCase() === 'audio' && e.target.src) {
+                    this.setAudioSource(e.target.src);
                 }
             }, true);
         }
 
         setAudioSource(src) {
-            const candidate = this.normalizeUrl(src);
-            if (!candidate || candidate === this.latestAudioSrc) {
-                if (candidate) {
-                    this.showButton();
-                }
-                return;
+            if (src && src.trim()) {
+                this.latestAudioSrc = src.trim();
+                this.showButton();
             }
-
-            this.latestAudioSrc = candidate;
-            this.button.setAttribute('data-audio-url', candidate);
-            this.button.title = candidate;
-            this.updateButtonState(CONSTANTS.ORIGINAL_TEXT);
-            this.clearHideTimeout();
-            this.showButton();
         }
 
         interceptNetworkRequests() {
-            const emitCapture = (url) => {
-                if (typeof window.__gzhAudioCaptureUrl === 'function') {
-                    window.__gzhAudioCaptureUrl(url);
-                }
+            const originalXHR = window.XMLHttpRequest;
+            const self = this;
+
+            window.XMLHttpRequest = function() {
+                const xhr = new originalXHR();
+                const originalOpen = xhr.open;
+
+                xhr.open = function(method, url, ...args) {
+                    if (typeof url === 'string' && url.includes(CONSTANTS.AUDIO_API_URL)) {
+                        self.setAudioSource(url);
+                    }
+                    return originalOpen.call(this, method, url, ...args);
+                };
+
+                return xhr;
             };
 
-            if (!window.__gzhAudioInterceptorsInstalled) {
-                const XMLHttpRequestPrototype = window.XMLHttpRequest && window.XMLHttpRequest.prototype;
-                if (XMLHttpRequestPrototype && XMLHttpRequestPrototype.open) {
-                    const originalOpen = XMLHttpRequestPrototype.open;
-                    XMLHttpRequestPrototype.open = function(method, url, ...args) {
-                        emitCapture(url);
-                        return originalOpen.call(this, method, url, ...args);
-                    };
-                }
-
-                if (window.fetch) {
-                    const originalFetch = window.fetch;
-                    window.fetch = function(input, init) {
-                        try {
-                            const request = new Request(input, init);
-                            emitCapture(request.url);
-                        } catch (_) {
-                            emitCapture(typeof input === 'string' ? input : input && input.url);
-                        }
-                        return originalFetch.call(this, input, init);
-                    };
-                }
-
-                window.__gzhAudioInterceptorsInstalled = true;
-            }
-
-            window.__gzhAudioCaptureUrl = (url) => this.handlePotentialAudioUrl(url);
-        }
-
-        handlePotentialAudioUrl(url) {
-            const normalized = this.normalizeUrl(url);
-            if (!normalized || !this.isAudioUrl(normalized)) {
-                return;
-            }
-            this.setAudioSource(normalized);
-        }
-
-        normalizeUrl(url) {
-            if (!url) {
-                return null;
-            }
-            try {
-                return new URL(url, window.location.href).href;
-            } catch (_) {
-                return null;
-            }
-        }
-
-        isAudioUrl(url) {
-            try {
-                const parsed = new URL(url);
-                return parsed.pathname.includes(CONSTANTS.AUDIO_PATH_KEYWORD);
-            } catch (_) {
-                return false;
-            }
-        }
-
-        buildFileName(url) {
-            try {
-                const parsed = new URL(url);
-                const filenameParam = parsed.searchParams.get('filename');
-                if (filenameParam) {
-                    return decodeURIComponent(filenameParam);
-                }
-                const voiceId = parsed.searchParams.get('voiceid') || parsed.searchParams.get('mediaid');
-                if (voiceId) {
-                    return `wx-audio-${voiceId}.mp3`;
-                }
-                const lastSegment = parsed.pathname.split('/').pop();
-                if (lastSegment && lastSegment !== 'getvoice') {
-                    return decodeURIComponent(lastSegment);
-                }
-            } catch (_) {
-                // ignore parsing errors
-            }
-            return CONSTANTS.FALLBACK_FILE_NAME;
-        }
-
-        triggerDownload(url) {
-            const fileName = this.buildFileName(url);
-
-            return new Promise((resolve, reject) => {
-                if (typeof GM_download === 'function') {
-                    try {
-                        GM_download({
-                            url,
-                            name: fileName,
-                            onload: () => resolve(),
-                            onerror: (error) => reject(error),
-                            ontimeout: (error) => reject(error)
-                        });
-                        return;
-                    } catch (error) {
-                        try {
-                            GM_download(url, fileName);
-                            resolve();
-                            return;
-                        } catch (fallbackError) {
-                            // continue to anchor fallback
-                        }
+            if (window.fetch) {
+                const originalFetch = window.fetch;
+                window.fetch = function(input, ...args) {
+                    const url = typeof input === 'string' ? input : input.url;
+                    if (url && url.includes(CONSTANTS.AUDIO_API_URL)) {
+                        self.setAudioSource(url);
                     }
-                }
-
-                try {
-                    const anchor = document.createElement('a');
-                    anchor.href = url;
-                    anchor.rel = 'noopener noreferrer';
-                    anchor.target = '_blank';
-                    anchor.download = fileName;
-                    document.body.appendChild(anchor);
-                    anchor.click();
-                    document.body.removeChild(anchor);
-                    resolve();
-                } catch (error) {
-                    try {
-                        window.open(url, '_blank', 'noopener');
-                        resolve();
-                    } catch (openError) {
-                        reject(openError);
-                    }
-                }
-            });
+                    return originalFetch.call(this, input, ...args);
+                };
+            }
         }
     }
 
