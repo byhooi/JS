@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MP3下载
 // @namespace    http://github.com/byhooi
-// @version      2.0
+// @version      3.0
 // @description  MP3下载工具
 // @match        https://basic.smartedu.cn/*
 // @grant        GM_setClipboard
@@ -10,362 +10,402 @@
 // @updateURL https://raw.githubusercontent.com/byhooi/JS/master/mp3.js
 // ==/UserScript==
 
-(function() {
+(function () {
     'use strict';
-    
-    // 初始化accessToken
-    initializeAccessToken();
-    
-    // 创建复制按钮
-    const downloadButton = document.createElement('button');
-    downloadButton.textContent = '下载MP3';
-    downloadButton.style.position = 'fixed';
-    downloadButton.style.top = '50px';
-    downloadButton.style.right = '10px';
-    downloadButton.style.zIndex = '9999';
-    downloadButton.style.padding = '10px 15px';
-    downloadButton.style.backgroundColor = '#FF9800';
-    downloadButton.style.color = 'white';
-    downloadButton.style.border = 'none';
-    downloadButton.style.borderRadius = '5px';
-    downloadButton.style.cursor = 'pointer';
-    downloadButton.style.display = 'none';
-    downloadButton.style.transition = 'all 0.3s ease';
 
-    // 下载功能
-    downloadButton.addEventListener('click', function() {
-        const mp3WithToken = addAccessTokenToUrl(mp3Link);
-        console.log('MP3链接:', mp3Link);
-        console.log('处理后的MP3链接:', mp3WithToken);
-        console.log('AccessToken:', accessToken);
-        
-        downloadButton.textContent = '下载中...';
-        downloadButton.style.backgroundColor = '#FF9800';
-        
-        // 使用window.open在新窗口中打开下载链接
-        window.open(mp3WithToken, '_blank');
-        
-        downloadButton.textContent = '已下载';
-        downloadButton.style.backgroundColor = '#4CAF50';
-        
-        setTimeout(() => {
-            downloadButton.style.display = 'none';
-            downloadButton.textContent = '下载MP3';
-            downloadButton.style.backgroundColor = '#FF9800';
-        }, 2000);
-    });
+    // ====== 配置 ======
+    const CONFIG = {
+        DEBUG: false,
+        MAX_CHECKS: 15,
+        CHECK_INTERVAL: 2000,
+        TOKEN_DELAY: 3000,
+        TOAST_DURATION: 3000,
+        BUTTON_RESET_DELAY: 2000
+    };
 
+    // ====== 状态 ======
     let mp3Link = '';
+    let accessToken = '';
+    let tokenRequestUrl = '';
+    let isTokenRequesting = false;
 
-    // 拦截XHR请求 - 改进版本
-    const originalXHR = window.XMLHttpRequest;
-    window.XMLHttpRequest = function() {
-        const xhr = new originalXHR();
-        const originalOpen = xhr.open;
-        const originalSend = xhr.send;
-        
-        xhr.open = function(method, url, ...args) {
-            console.log('XHR请求:', method, url);
-            if (url && url.includes('.mp3')) {
-                mp3Link = url;
-                console.log('找到MP3链接 (XHR):', mp3Link);
-                downloadButton.style.display = 'block';
+    // ====== 工具函数 ======
+    function debug(...args) {
+        if (CONFIG.DEBUG) console.log('[mp3.js]', ...args);
+    }
+
+    function showToast(message, type = 'info') {
+        const toast = document.createElement('div');
+        const colors = { info: '#2196F3', success: '#4CAF50', error: '#f44336', warning: '#FF9800' };
+        Object.assign(toast.style, {
+            position: 'fixed', top: '100px', right: '10px', zIndex: '10000',
+            padding: '12px 20px', borderRadius: '6px', color: 'white',
+            backgroundColor: colors[type] || colors.info,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+            fontSize: '14px', transition: 'opacity 0.3s ease', opacity: '1'
+        });
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 300);
+        }, CONFIG.TOAST_DURATION);
+    }
+
+    function addAccessToken(url) {
+        if (!url || !accessToken) return url;
+        const separator = url.includes('?') ? '&' : '?';
+        return url + separator + 'accessToken=' + accessToken;
+    }
+
+    function getFileNameFromUrl(url) {
+        try {
+            const pathname = new URL(url).pathname;
+            const filename = pathname.split('/').pop();
+            if (filename && filename.endsWith('.mp3')) return decodeURIComponent(filename);
+        } catch (e) { /* ignore */ }
+        const title = document.title.replace(/[\\/:*?"<>|]/g, '_').trim();
+        return title ? `${title}.mp3` : 'download.mp3';
+    }
+
+    // ====== UI ======
+    function createDownloadButton() {
+        const btn = document.createElement('button');
+        btn.textContent = '下载MP3';
+        Object.assign(btn.style, {
+            position: 'fixed', top: '50px', right: '10px', zIndex: '9999',
+            padding: '10px 15px', backgroundColor: '#FF9800', color: 'white',
+            border: 'none', borderRadius: '5px', cursor: 'pointer',
+            display: 'none', transition: 'all 0.3s ease',
+            fontWeight: 'bold', fontSize: '14px',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.2)'
+        });
+
+        btn.addEventListener('mouseenter', () => { btn.style.opacity = '0.85'; });
+        btn.addEventListener('mouseleave', () => { btn.style.opacity = '1'; });
+
+        btn.addEventListener('click', () => {
+            if (!mp3Link) {
+                showToast('未找到MP3链接，请刷新页面重试', 'error');
+                return;
             }
-            return originalOpen.apply(this, [method, url, ...args]);
+
+            const downloadUrl = addAccessToken(mp3Link);
+            debug('MP3链接:', mp3Link);
+            debug('下载链接:', downloadUrl);
+
+            updateButtonState(btn, 'downloading');
+
+            // 使用 <a> 标签触发下载，更好地兼容下载管理器
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.target = '_blank';
+            link.download = getFileNameFromUrl(mp3Link);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            updateButtonState(btn, 'done');
+            setTimeout(() => updateButtonState(btn, 'reset'), CONFIG.BUTTON_RESET_DELAY);
+        });
+
+        document.body.appendChild(btn);
+        return btn;
+    }
+
+    function updateButtonState(btn, state) {
+        const states = {
+            ready: { text: '下载MP3', bg: '#FF9800', display: 'block' },
+            downloading: { text: '下载中...', bg: '#2196F3', display: 'block' },
+            done: { text: '已下载', bg: '#4CAF50', display: 'block' },
+            reset: { text: '下载MP3', bg: '#FF9800', display: 'none' }
         };
-        
-        xhr.send = function(data) {
-            const originalOnload = xhr.onload;
-            xhr.onload = function() {
-                // 检查响应URL
-                if (xhr.responseURL && xhr.responseURL.includes('.mp3')) {
-                    mp3Link = xhr.responseURL;
-                    console.log('找到MP3链接 (XHR响应):', mp3Link);
-                    downloadButton.style.display = 'block';
-                }
-                if (originalOnload) originalOnload.apply(this, arguments);
+        const s = states[state];
+        if (!s) return;
+        btn.textContent = s.text;
+        btn.style.backgroundColor = s.bg;
+        btn.style.display = s.display;
+    }
+
+    // ====== 检测 MP3 链接 ======
+    function isMP3Url(url) {
+        return typeof url === 'string' && url.includes('.mp3');
+    }
+
+    function captureMP3(url, source) {
+        mp3Link = url;
+        debug(`找到MP3链接 (${source}):`, mp3Link);
+        if (downloadBtn) updateButtonState(downloadBtn, 'ready');
+    }
+
+    // ====== 网络拦截（统一入口） ======
+    function setupInterceptors() {
+        // --- XHR 拦截 ---
+        const OriginalXHR = window.XMLHttpRequest;
+        window.XMLHttpRequest = function () {
+            const xhr = new OriginalXHR();
+            const originalOpen = xhr.open;
+            const originalSend = xhr.send;
+
+            xhr.open = function (method, url, ...args) {
+                const urlStr = typeof url === 'string' ? url : String(url);
+                debug('XHR请求:', urlStr);
+
+                if (isMP3Url(urlStr)) captureMP3(urlStr, 'XHR');
+                checkTokenUrl(urlStr);
+
+                return originalOpen.apply(this, [method, url, ...args]);
             };
-            return originalSend.apply(this, arguments);
+
+            // 拦截 send 以检查响应 URL（处理重定向）
+            xhr.send = function (data) {
+                const originalOnload = xhr.onload;
+                xhr.onload = function () {
+                    if (xhr.responseURL && isMP3Url(xhr.responseURL)) {
+                        captureMP3(xhr.responseURL, 'XHR响应');
+                    }
+                    if (originalOnload) originalOnload.apply(this, arguments);
+                };
+                return originalSend.apply(this, arguments);
+            };
+
+            return xhr;
         };
-        
-        return xhr;
-    };
 
-    // 拦截Fetch请求 - 改进版本
-    const originalFetch = window.fetch;
-    window.fetch = function(url, options) {
-        console.log('Fetch请求:', url);
-        if (url && url.includes('.mp3')) {
-            mp3Link = url;
-            console.log('找到MP3链接 (Fetch):', mp3Link);
-            downloadButton.style.display = 'block';
+        // --- Fetch 拦截 ---
+        const originalFetch = window.fetch;
+        window.fetch = function (input, options) {
+            const urlStr = typeof input === 'string' ? input : (input?.url || String(input));
+            debug('Fetch请求:', urlStr);
+
+            if (isMP3Url(urlStr)) captureMP3(urlStr, 'Fetch');
+            checkTokenUrl(urlStr);
+
+            // 拦截响应以检查重定向 URL
+            const fetchPromise = originalFetch.apply(this, arguments);
+            fetchPromise.then(response => {
+                if (response.url && isMP3Url(response.url)) {
+                    captureMP3(response.url, 'Fetch响应');
+                }
+            }).catch(e => debug('Fetch error:', e));
+
+            return fetchPromise;
+        };
+    }
+
+    // ====== Token 管理 ======
+    function checkTokenUrl(url) {
+        if (typeof url !== 'string') return;
+        if ((url.includes('token') || url.includes('sso') || url.includes('auth'))
+            && url.includes('sso.basic.smartedu.cn') && !tokenRequestUrl) {
+            tokenRequestUrl = url;
+            debug('保存token请求URL:', tokenRequestUrl);
         }
-        
-        // 拦截响应以检查重定向的URL
-        const fetchPromise = originalFetch.apply(this, arguments);
-        fetchPromise.then(response => {
-            if (response.url && response.url.includes('.mp3')) {
-                mp3Link = response.url;
-                console.log('找到MP3链接 (Fetch响应):', mp3Link);
-                downloadButton.style.display = 'block';
+    }
+
+    function getAccessTokenFromUrl(url) {
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: url,
+                headers: {
+                    'Referer': 'https://basic.smartedu.cn/',
+                    'User-Agent': navigator.userAgent
+                },
+                onload(response) {
+                    try {
+                        let responseData;
+                        const text = response.responseText;
+
+                        const jsonpMatch = text.match(/\((.*)\)/);
+                        responseData = jsonpMatch
+                            ? JSON.parse(jsonpMatch[1])
+                            : JSON.parse(text);
+
+                        const fields = [
+                            '$body.access_token', '$body.accessToken', '$body.token',
+                            'access_token', 'accessToken', 'token',
+                            'data.access_token', 'data.accessToken', 'data.token',
+                            'result.access_token', 'result.accessToken', 'result.token'
+                        ];
+
+                        for (const field of fields) {
+                            let value = responseData;
+                            try {
+                                for (const part of field.split('.')) {
+                                    value = value[part];
+                                    if (value === undefined) break;
+                                }
+                                if (value && typeof value === 'string') {
+                                    debug(`从字段 ${field} 提取到token`);
+                                    return resolve(value);
+                                }
+                            } catch (e) { continue; }
+                        }
+
+                        debug('响应数据:', responseData);
+                        reject(new Error('未找到accessToken字段'));
+                    } catch (error) {
+                        debug('解析响应出错:', error);
+                        reject(error);
+                    }
+                },
+                onerror(error) {
+                    debug('请求失败:', error);
+                    reject(error);
+                }
+            });
+        });
+    }
+
+    function generateDeviceId() {
+        const ua = navigator.userAgent;
+        const osMatch = ua.match(/Windows NT [\d.]+|Mac OS X [\d._]+|Linux/);
+        const os = osMatch ? osMatch[0].replace(/\s/g, '') : 'Unknown';
+        const chromeMatch = ua.match(/Chrome\/([\d]+)/);
+        const chrome = chromeMatch ? `Chrome${chromeMatch[1]}` : 'Browser';
+        const uid = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36);
+        return `Rw${os}/${chrome}/${uid}`;
+    }
+
+    async function tryGetAccessToken() {
+        if (isTokenRequesting) return;
+        isTokenRequesting = true;
+
+        try {
+            if (tokenRequestUrl) {
+                debug('使用捕获的URL获取token');
+                accessToken = await getAccessTokenFromUrl(tokenRequestUrl);
+                debug('成功获取accessToken');
+                return;
             }
-        }).catch(e => console.log('Fetch error:', e));
-        
-        return fetchPromise;
-    };
 
-    document.body.appendChild(downloadButton);
+            const commonUrls = [
+                'https://sso.basic.smartedu.cn/v1.1/sso/tokens',
+                'https://sso.basic.smartedu.cn/api/tokens',
+                'https://api.basic.smartedu.cn/token'
+            ];
 
-    // 在DOM中查找MP3链接
-    function findMP3LinkInDOM() {
-        const links = document.querySelectorAll('a[href*=".mp3"], audio[src*=".mp3"], source[src*=".mp3"]');
-        for (const link of links) {
-            const href = link.href || link.src;
+            const deviceId = generateDeviceId();
+            for (const baseUrl of commonUrls) {
+                try {
+                    const timestamp = Date.now();
+                    const callback = 'nd_uc_sdk_' + timestamp;
+                    const headers = JSON.stringify({
+                        "$headers": {
+                            "Accept": "application/json",
+                            "Content-Type": "application/json",
+                            "SDP-APP-ID": "e5649925-441d-4a53-b525-51a2f1c4e0a8",
+                            "DEVICE-ID": deviceId,
+                            "Host": "sso.basic.smartedu.cn"
+                        },
+                        "$body": "{}",
+                        "$method": "GET"
+                    });
+                    const fullUrl = `${baseUrl}?$proxy=proxyhttp&bodys=${encodeURIComponent(headers)}&callback=${callback}`;
+
+                    debug('尝试URL:', baseUrl);
+                    accessToken = await getAccessTokenFromUrl(fullUrl);
+                    tokenRequestUrl = fullUrl;
+                    debug('成功获取accessToken');
+                    break;
+                } catch (error) {
+                    debug(`URL ${baseUrl} 获取失败:`, error.message);
+                }
+            }
+
+            if (!accessToken) {
+                throw new Error('所有尝试都失败了');
+            }
+        } catch (error) {
+            debug('自动获取accessToken失败:', error);
+            showToast('自动获取Token失败，请手动输入', 'warning');
+            accessToken = prompt('自动获取accessToken失败，请手动输入:') || '';
+        } finally {
+            isTokenRequesting = false;
+        }
+    }
+
+    // ====== 资源发现 ======
+    function findMP3InDOM() {
+        const selectors = 'a[href*=".mp3"], audio[src*=".mp3"], source[src*=".mp3"]';
+        for (const el of document.querySelectorAll(selectors)) {
+            const href = el.href || el.src;
             if (href) {
-                mp3Link = decodeURIComponent(href);
-                console.log('在DOM中找到MP3链接:', mp3Link);
-                downloadButton.style.display = 'block';
+                captureMP3(decodeURIComponent(href), 'DOM');
                 return true;
             }
         }
         return false;
     }
 
-    // 使用Performance API监听网络请求
     function checkPerformanceEntries() {
         const entries = performance.getEntriesByType('resource');
         for (const entry of entries) {
-            if (entry.name.includes('.mp3')) {
-                mp3Link = entry.name;
-                console.log('Performance API找到MP3链接:', mp3Link);
-                downloadButton.style.display = 'block';
+            if (isMP3Url(entry.name)) {
+                captureMP3(entry.name, 'PerformanceAPI');
                 return true;
             }
         }
         return false;
     }
 
-    // 监听新的性能条目
-    if (window.PerformanceObserver) {
+    function setupPerformanceObserver() {
+        if (!window.PerformanceObserver) return;
         const observer = new PerformanceObserver((list) => {
             for (const entry of list.getEntries()) {
-                if (entry.name.includes('.mp3')) {
-                    mp3Link = entry.name;
-                    console.log('PerformanceObserver找到MP3链接:', mp3Link);
-                    downloadButton.style.display = 'block';
+                if (isMP3Url(entry.name)) {
+                    captureMP3(entry.name, 'PerformanceObserver');
                 }
             }
         });
-        observer.observe({entryTypes: ['resource']});
+        observer.observe({ entryTypes: ['resource'] });
     }
 
-    // 定期检查MP3链接
-    let checkCount = 0;
-    const maxChecks = 15;
-    const checkInterval = setInterval(() => {
-        checkCount++;
-        console.log(`第${checkCount}次检查MP3链接`);
-        
-        // 检查Performance API
-        if (!mp3Link) {
-            checkPerformanceEntries();
-        }
-        
-        if (mp3Link || findMP3LinkInDOM() || checkCount >= maxChecks) {
-            clearInterval(checkInterval);
+    function startResourceCheck() {
+        let checkCount = 0;
+        const interval = setInterval(() => {
+            checkCount++;
+            debug(`第${checkCount}次检查MP3链接`);
+
+            if (!mp3Link) checkPerformanceEntries();
+
+            if (mp3Link || findMP3InDOM() || checkCount >= CONFIG.MAX_CHECKS) {
+                clearInterval(interval);
+                if (!mp3Link) {
+                    debug('未能找到MP3链接');
+                }
+            }
+        }, CONFIG.CHECK_INTERVAL);
+    }
+
+    // ====== 初始化 ======
+    let downloadBtn = null;
+
+    function init() {
+        setupInterceptors();
+        setupPerformanceObserver();
+        downloadBtn = createDownloadButton();
+
+        // 延迟获取 token
+        setTimeout(async () => {
+            if (!accessToken) {
+                await tryGetAccessToken();
+            }
+        }, CONFIG.TOKEN_DELAY);
+
+        // 页面加载后兜底检查
+        window.addEventListener('load', () => {
             if (!mp3Link) {
-                console.log('未能找到MP3链接');
-            }
-        }
-    }, 2000);
-
-    window.addEventListener('load', function() {
-        if (!mp3Link) {
-            console.log('页面加载完成,尝试从DOM中查找MP3链接');
-            findMP3LinkInDOM();
-            // 页面加载后立即检查Performance API
-            checkPerformanceEntries();
-        }
-    });
-
-})();
-
-// 自动获取 accessToken (复用jc.js的逻辑)
-let accessToken = '';
-let tokenRequestUrl = '';
-let isTokenRequesting = false;
-
-// 监听网络请求，自动捕获token相关请求
-function interceptTokenRequests() {
-    // 拦截XMLHttpRequest
-    const originalXHROpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function(method, url, ...args) {
-        // 检查是否是token相关请求
-        if (url.includes('token') || url.includes('sso') || url.includes('auth')) {
-            console.log('检测到可能的token请求:', url);
-            // 保存这个URL以备后用
-            if (!tokenRequestUrl && url.includes('sso.basic.smartedu.cn')) {
-                tokenRequestUrl = url;
-                console.log('保存token请求URL:', tokenRequestUrl);
-            }
-        }
-        return originalXHROpen.apply(this, [method, url, ...args]);
-    };
-
-    // 拦截fetch请求
-    const originalFetch = window.fetch;
-    window.fetch = function(url, options) {
-        if (typeof url === 'string' && (url.includes('token') || url.includes('sso') || url.includes('auth'))) {
-            console.log('检测到可能的token请求(fetch):', url);
-            if (!tokenRequestUrl && url.includes('sso.basic.smartedu.cn')) {
-                tokenRequestUrl = url;
-                console.log('保存token请求URL(fetch):', tokenRequestUrl);
-            }
-        }
-        return originalFetch.apply(this, arguments);
-    };
-}
-
-// 从捕获的URL获取accessToken
-function getAccessTokenFromUrl(url) {
-    return new Promise((resolve, reject) => {
-        GM_xmlhttpRequest({
-            method: 'GET',
-            url: url,
-            headers: {
-                'Referer': 'https://basic.smartedu.cn/',
-                'User-Agent': navigator.userAgent
-            },
-            onload: function(response) {
-                try {
-                    let responseData;
-                    const responseText = response.responseText;
-                    
-                    // 尝试解析JSONP响应
-                    const jsonpMatch = responseText.match(/\((.*)\)/);
-                    if (jsonpMatch) {
-                        responseData = JSON.parse(jsonpMatch[1]);
-                    } else {
-                        // 尝试直接解析JSON
-                        responseData = JSON.parse(responseText);
-                    }
-                    
-                    // 从响应中提取accessToken，支持多种可能的字段名
-                    const possibleFields = [
-                        '$body.access_token', '$body.accessToken', '$body.token',
-                        'access_token', 'accessToken', 'token',
-                        'data.access_token', 'data.accessToken', 'data.token',
-                        'result.access_token', 'result.accessToken', 'result.token'
-                    ];
-                    
-                    let foundToken = null;
-                    for (const field of possibleFields) {
-                        const fieldParts = field.split('.');
-                        let value = responseData;
-                        
-                        try {
-                            for (const part of fieldParts) {
-                                value = value[part];
-                                if (value === undefined) break;
-                            }
-                            if (value && typeof value === 'string') {
-                                foundToken = value;
-                                console.log(`成功从字段 ${field} 提取到token:`, foundToken.substring(0, 20) + '...');
-                                break;
-                            }
-                        } catch (e) {
-                            continue;
-                        }
-                    }
-                    
-                    if (foundToken) {
-                        resolve(foundToken);
-                    } else {
-                        console.log('响应数据:', responseData);
-                        reject('未找到accessToken字段');
-                    }
-                } catch (error) {
-                    console.error('解析响应时出错:', error);
-                    reject(error);
-                }
-            },
-            onerror: function(error) {
-                console.error('请求失败:', error);
-                reject(error);
+                debug('页面加载完成，从DOM查找MP3链接');
+                findMP3InDOM();
+                checkPerformanceEntries();
             }
         });
-    });
-}
 
-// 尝试获取accessToken
-async function tryGetAccessToken() {
-    if (isTokenRequesting) return;
-    isTokenRequesting = true;
-    
-    try {
-        // 如果已经捕获到token URL，直接使用
-        if (tokenRequestUrl) {
-            console.log('使用捕获的URL获取token:', tokenRequestUrl);
-            accessToken = await getAccessTokenFromUrl(tokenRequestUrl);
-            console.log('成功获取accessToken:', accessToken);
-            return;
-        }
-        
-        // 否则尝试常见的token请求URL模式
-        const commonTokenUrls = [
-            'https://sso.basic.smartedu.cn/v1.1/sso/tokens',
-            'https://sso.basic.smartedu.cn/api/tokens',
-            'https://api.basic.smartedu.cn/token'
-        ];
-        
-        for (const baseUrl of commonTokenUrls) {
-            try {
-                // 构建带参数的URL
-                const timestamp = Date.now();
-                const callbackName = 'nd_uc_sdk_' + timestamp;
-                const fullUrl = `${baseUrl}?$proxy=proxyhttp&bodys=%7B%22%24headers%22%3A%7B%22Accept%22%3A%22application%2Fjson%22%2C%22Content-Type%22%3A%22application%2Fjson%22%2C%22SDP-APP-ID%22%3A%22e5649925-441d-4a53-b525-51a2f1c4e0a8%22%2C%22DEVICE-ID%22%3A%22RwWin10%2FChrome134%2F23f6fa6c-d06b-4ef7-ba46-33f0884afb16%22%2C%22Host%22%3A%22sso.basic.smartedu.cn%22%7D%2C%22%24body%22%3A%22%7B%7D%22%2C%22%24method%22%3A%22GET%22%7D&callback=${callbackName}`;
-                
-                console.log('尝试URL:', fullUrl);
-                accessToken = await getAccessTokenFromUrl(fullUrl);
-                console.log('成功获取accessToken:', accessToken);
-                tokenRequestUrl = fullUrl;
-                break;
-            } catch (error) {
-                console.log(`URL ${baseUrl} 获取失败:`, error.message);
-                continue;
-            }
-        }
-        
-        if (!accessToken) {
-            throw new Error('所有尝试都失败了');
-        }
-    } catch (error) {
-        console.error('自动获取accessToken失败:', error);
-        // 如果自动获取失败，提示用户手动输入
-        accessToken = prompt('自动获取accessToken失败，请手动输入:') || '';
-    } finally {
-        isTokenRequesting = false;
+        // 定时轮询检查
+        startResourceCheck();
     }
-}
 
-// 初始化accessToken获取
-async function initializeAccessToken() {
-    // 启动网络请求监听
-    interceptTokenRequests();
-    
-    // 延迟一段时间让页面加载，然后尝试获取token
-    setTimeout(async () => {
-        if (!accessToken) {
-            await tryGetAccessToken();
-        }
-    }, 3000);
-}
-
-// 为MP3 URL添加accessToken参数
-function addAccessTokenToUrl(url) {
-    if (!url || !accessToken) return url;
-    
-    // 检查URL是否已经包含参数
-    const separator = url.includes('?') ? '&' : '?';
-    return url + separator + 'accessToken=' + accessToken;
-}
+    init();
+})();
