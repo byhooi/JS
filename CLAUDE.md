@@ -32,11 +32,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 2. **文件下载类脚本** (jc.js, mp3.js)
    - 功能：拦截并下载 PDF/MP3 文件
-   - 核心模式：网络请求拦截 (XHR/Fetch) + accessToken 自动获取
-   - 关键技术：JSONP 解析、Performance API 监听、GM_xmlhttpRequest
+   - 核心模式：统一网络请求拦截 (`setupInterceptors`) + accessToken 自动获取
+   - 关键技术：JSONP 解析、Performance API / PerformanceObserver 监听、GM_xmlhttpRequest
+   - 代码结构：CONFIG 配置对象 + debug 日志开关 + Toast 提示 + 动态 DEVICE-ID 生成
 
 3. **微信公众号增强脚本** (gzhyp.js, gzhsc.js)
-   - gzhyp.js: 拦截并下载公众号音频文件
+   - gzhyp.js: 拦截并下载公众号音频文件（面向对象 class 设计，支持 `<source>` 子元素捕获）
    - gzhsc.js: 复制素材库图片链接（修复版本 1.2 移除了多余引号）
    - 共同特性：jQuery 使用、优雅的 UI 提示
 
@@ -90,10 +91,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 使用常量或配置对象管理可配置参数：
 ```javascript
 const CONFIG = {
-    selectors: { /* CSS 选择器 */ },
-    button: { /* 按钮配置 */ },
-    styles: { /* 样式定义 */ }
+    DEBUG: false,
+    MAX_CHECKS: 10,
+    CHECK_INTERVAL: 2000,
+    TOKEN_DELAY: 3000,
+    TOAST_DURATION: 3000
 };
+```
+
+#### 2.1 调试日志
+使用 `debug()` 函数替代裸 `console.log`，通过 `CONFIG.DEBUG` 或顶层 `DEBUG` 开关控制：
+```javascript
+function debug(...args) {
+    if (CONFIG.DEBUG) console.log('[脚本名]', ...args);
+}
 ```
 
 #### 3. 初始化模式
@@ -111,22 +122,51 @@ if (document.readyState === 'loading') {
 ```
 
 #### 4. 网络请求拦截
-标准的 XHR/Fetch 拦截模式：
+统一的 XHR/Fetch 拦截模式（同时处理资源链接提取和 token URL 捕获）：
 ```javascript
-const originalXHR = window.XMLHttpRequest;
-window.XMLHttpRequest = function() {
-    const xhr = new originalXHR();
-    const originalOpen = xhr.open;
-    xhr.open = function(method, url, ...args) {
-        // 拦截逻辑
-        return originalOpen.apply(this, [method, url, ...args]);
+function setupInterceptors() {
+    // --- XHR 拦截 ---
+    const OriginalXHR = window.XMLHttpRequest;
+    window.XMLHttpRequest = function () {
+        const xhr = new OriginalXHR();
+        const originalOpen = xhr.open;
+        xhr.open = function (method, url, ...args) {
+            // 资源链接检测 + token URL 捕获
+            return originalOpen.apply(this, [method, url, ...args]);
+        };
+        return xhr;
     };
-    return xhr;
-};
+
+    // --- Fetch 拦截 ---
+    const originalFetch = window.fetch;
+    window.fetch = function (input, options) {
+        // 资源链接检测 + token URL 捕获
+        return originalFetch.apply(this, arguments);
+    };
+}
 ```
 
+> **重要**：XHR 和 Fetch 拦截应合并在同一个函数中，避免多次覆盖导致调用链冲突。
+
 #### 5. 按钮状态管理
-统一的按钮反馈机制：
+统一的按钮状态管理（下载类脚本）：
+```javascript
+function updateButtonState(btn, state) {
+    const states = {
+        ready:       { text: '下载XX', bg: '#4CAF50', display: 'block' },
+        downloading: { text: '下载中...', bg: '#FF9800', display: 'block' },
+        done:        { text: '已下载', bg: '#4CAF50', display: 'block' },
+        reset:       { text: '下载XX', bg: '#4CAF50', display: 'none' }
+    };
+    const s = states[state];
+    if (!s) return;
+    btn.textContent = s.text;
+    btn.style.backgroundColor = s.bg;
+    btn.style.display = s.display;
+}
+```
+
+复制类脚本的按钮反馈：
 ```javascript
 async function copyContent(content, button) {
     try {
@@ -138,6 +178,23 @@ async function copyContent(content, button) {
         button.textContent = '复制失败';
         button.style.backgroundColor = '#ff4444';
     }
+}
+```
+
+#### 5.1 Toast 提示
+轻量级 Toast 提示替代原生 `alert()`：
+```javascript
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    const colors = { info: '#2196F3', success: '#4CAF50', error: '#f44336', warning: '#FF9800' };
+    Object.assign(toast.style, {
+        position: 'fixed', top: '60px', right: '10px', zIndex: '10000',
+        padding: '12px 20px', borderRadius: '6px', color: 'white',
+        backgroundColor: colors[type] || colors.info
+    });
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
 }
 ```
 
@@ -193,22 +250,31 @@ if (buttonAdded || document.querySelector('.custom-btn')) return;
 3. 打开浏览器开发者工具 (F12) 查看控制台输出
 
 ### 调试日志
-每个脚本都有详细的日志记录：
-- **网络请求拦截**：XHR/Fetch 拦截日志，包含 URL 和请求参数
+脚本使用 `debug()` 函数输出日志，默认关闭，通过配置开启：
+- **jc.js / mp3.js**：`CONFIG.DEBUG = true`
+- **gzhyp.js**：顶层 `DEBUG = true`
+- **doubao.js**：`CONFIG.debugMode = true`
+
+日志覆盖范围：
+- **网络请求拦截**：XHR/Fetch 拦截日志，包含 URL
 - **资源发现**：PDF/MP3/音频链接的发现和提取过程
-- **Token 获取**：AccessToken 的获取、解析和验证过程
-- **用户交互**：按钮点击、复制操作、状态变化
+- **Token 获取**：AccessToken 的获取和解析过程
+- **用户交互**：按钮点击、状态变化
 
 ### 配置调试模式
-部分脚本（如 doubao.js）支持调试模式：
 ```javascript
-const CONFIG = {
-    debugMode: true  // 启用详细日志输出
-};
+// jc.js / mp3.js
+const CONFIG = { DEBUG: true, ... };
+
+// gzhyp.js
+const DEBUG = true;
+
+// doubao.js
+const CONFIG = { debugMode: true };
 ```
 
 ### 常见调试技巧
-- 使用 `console.log('[脚本名]', ...)` 格式化日志便于过滤
+- 开启 `DEBUG` 开关后，日志以 `[脚本名]` 前缀输出，便于在控制台过滤
 - 检查 `document.readyState` 确认脚本执行时机
 - 使用 `MutationObserver` 时在控制台验证选择器是否正确
 - 检查 Clipboard API 权限：`navigator.permissions.query({name: 'clipboard-write'})`
@@ -217,7 +283,8 @@ const CONFIG = {
 
 - 主分支：master
 - 提交信息应清晰描述修改内容
-- 最近提交示例："优化微信公众号音频下载脚本，版本号升级到1.3"
+- 提交信息前缀：`refactor:` / `optimize:` / `fix:` / `feat:`
+- 示例：`refactor: 重构 jc.js(v4.0) 和 mp3.js(v3.0) - 合并双重拦截/统一作用域`
 
 ## 注意事项
 
@@ -242,13 +309,15 @@ const CONFIG = {
 - **浏览器特性检测**：使用前检查 API 是否存在（如 `window.performance`）
 
 ### 4. AccessToken 获取模式
-用于 jc.js 和 mp3.js：
-- **自动拦截**：拦截包含 token 的网络请求
+用于 jc.js 和 mp3.js（代码内联在各自 IIFE 中，结构统一）：
+- **统一拦截**：在 `setupInterceptors()` 中通过 `checkTokenUrl()` 捕获 token URL
+- **动态 DEVICE-ID**：`generateDeviceId()` 从 UA 动态生成，不再硬编码浏览器版本
 - **多格式支持**：
   - JSONP 响应：使用正则提取 callback 函数中的 JSON
   - 标准 JSON 响应：直接解析
-- **失败降级**：自动获取失败时提供手动输入选项
-- **验证机制**：获取 token 后立即验证有效性
+  - 多字段名兼容（`$body.access_token`、`accessToken`、`data.token` 等）
+- **空值保护**：`accessToken` 为空时不拼接到下载 URL
+- **失败降级**：自动获取失败时 Toast 提示 + 手动输入选项
 
 ### 5. 版本更新规范
 - 功能新增：升级次版本号（如 1.0 → 1.1）
