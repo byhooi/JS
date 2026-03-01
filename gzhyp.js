@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         微信公众号音频下载
 // @namespace    http://github.com/byhooi
-// @version      1.3
+// @version      1.4
 // @description  下载微信公众号中播放的音频文件
 // @match        https://mp.weixin.qq.com/*
-// @grant        GM_download
 // @grant        GM_setClipboard
+// @grant        GM_notification
 // @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/gzhyp.js
 // @updateURL https://raw.githubusercontent.com/byhooi/JS/master/gzhyp.js
 // ==/UserScript==
@@ -106,7 +106,7 @@
             this.applyStyles(this.button, additionalStyles);
         }
 
-        async handleButtonClick() {
+        handleButtonClick() {
             if (!this.latestAudioSrc) {
                 this.updateButtonState(CONSTANTS.ERROR_TEXT, { backgroundColor: '#f44336' });
                 setTimeout(() => {
@@ -115,35 +115,39 @@
                 return;
             }
 
-            this.updateButtonState(CONSTANTS.DOWNLOADING_TEXT, { backgroundColor: '#FF9800' });
-
             const title = document.title.replace(/[\\/:*?"<>|]/g, '_').trim();
             const fileName = title ? `${title}.mp3` : `audio_${Date.now()}.mp3`;
 
-            // 使用 GM_download 进行下载，它能更好地处理跨域和文件保存
-            GM_download({
-                url: this.latestAudioSrc,
-                name: fileName,
-                saveAs: true, // 提示用户保存文件，这也更容易被 IDM 捕获
-                onload: () => {
-                    this.updateButtonState(CONSTANTS.DOWNLOADED_TEXT, { backgroundColor: '#4CAF50' });
-                    setTimeout(() => {
-                        this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
-                        this.hideButton();
-                    }, CONSTANTS.HIDE_DELAY);
-                },
-                onerror: (error) => {
-                    debug('下载失败:', error);
-                    this.updateButtonState(CONSTANTS.ERROR_TEXT, { backgroundColor: '#f44336' });
-                    setTimeout(() => {
-                        this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
-                    }, CONSTANTS.HIDE_DELAY);
-                }
-            });
+            // 使用原生 <a> 标签下载，浏览器会发起标准下载请求，IDM 可以正常拦截
+            const a = document.createElement('a');
+            a.href = this.latestAudioSrc;
+            a.download = fileName;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+            this.updateButtonState(CONSTANTS.DOWNLOADED_TEXT, { backgroundColor: '#4CAF50' });
+            setTimeout(() => {
+                this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
+                this.hideButton();
+            }, CONSTANTS.HIDE_DELAY);
+        }
+
+        handleRightClick(e) {
+            e.preventDefault();
+            if (!this.latestAudioSrc) return;
+
+            GM_setClipboard(this.latestAudioSrc, 'text');
+            this.updateButtonState('链接已复制', { backgroundColor: '#333' });
+            setTimeout(() => {
+                this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
+            }, CONSTANTS.HIDE_DELAY);
         }
 
         setupEventListeners() {
             this.button.addEventListener('click', () => this.handleButtonClick());
+            this.button.addEventListener('contextmenu', (e) => this.handleRightClick(e));
 
             document.addEventListener('play', (e) => {
                 if (e.target.tagName.toLowerCase() === 'audio') {
