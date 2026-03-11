@@ -118,14 +118,8 @@
             const title = document.title.replace(/[\\/:*?"<>|]/g, '_').trim();
             const fileName = title ? `${title}.mp3` : `audio_${Date.now()}.mp3`;
 
-            // 使用原生 <a> 标签下载，浏览器会发起标准下载请求，IDM 可以正常拦截
-            const a = document.createElement('a');
-            a.href = this.latestAudioSrc;
-            a.download = fileName;
-            a.style.display = 'none';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            // 直接在当前页面导航到音频 URL，浏览器/IDM 会拦截下载
+            window.location.href = this.latestAudioSrc;
 
             this.updateButtonState(CONSTANTS.DOWNLOADED_TEXT, { backgroundColor: '#4CAF50' });
             setTimeout(() => {
