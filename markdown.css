@@ -3,11 +3,33 @@
  * 简洁现代的设计风格
  */
 
+:root {
+    --md-primary-color: rgba(107, 97, 235, 1);
+}
+
 /* ==================== 标题样式 ==================== */
 h1 {
-    padding: 0.5em 1em;
+    padding: 0.5em 0 0.4em 0;
     font-size: calc(var(--md-font-size) * 1.4);
     text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.05);
+    border-bottom: 2px solid color-mix(in srgb, var(--md-primary-color) 15%, transparent);
+    position: relative;
+}
+
+h1::after {
+    content: "";
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 60px;
+    height: 4px;
+    background: var(--md-primary-color);
+    border-radius: 4px;
+    transition: width 0.3s ease-out;
+}
+
+h1:hover::after {
+    width: 100%;
 }
 
 h2 {
@@ -30,19 +52,26 @@ h3 {
 }
 
 @media (prefers-color-scheme: dark) {
+
     h3 {
         color: rgba(255, 255, 255, 0.9);
-        background: color-mix(in srgb, rgba(107, 97, 235, 1) 15%, transparent);
-        border-right: 1px solid color-mix(in srgb, rgba(107, 97, 235, 1) 20%, transparent);
-        border-bottom: 1px solid color-mix(in srgb, rgba(107, 97, 235, 1) 20%, transparent);
-        border-top: 1px solid color-mix(in srgb, rgba(107, 97, 235, 1) 20%, transparent);
+        background: color-mix(in srgb, var(--md-primary-color) 15%, transparent);
+        border-right: 1px solid color-mix(in srgb, var(--md-primary-color) 20%, transparent);
+        border-bottom: 1px solid color-mix(in srgb, var(--md-primary-color) 20%, transparent);
+        border-top: 1px solid color-mix(in srgb, var(--md-primary-color) 20%, transparent);
     }
 
     blockquote {
         color: rgba(255, 255, 255, 0.55);
+        background: color-mix(in srgb, var(--md-primary-color) 8%, transparent);
         border-bottom: 0.2px solid rgba(255, 255, 255, 0.06);
         border-top: 0.2px solid rgba(255, 255, 255, 0.06);
         border-right: 0.2px solid rgba(255, 255, 255, 0.06);
+    }
+
+    code:not([class]) {
+        background: color-mix(in srgb, var(--md-primary-color) 25%, transparent);
+        color: color-mix(in srgb, var(--md-primary-color) 25%, white);
     }
 
     pre.code__pre,
@@ -79,9 +108,12 @@ blockquote {
     font-style: italic;
     padding: 1em 1em 1em 2em;
     color: rgba(0, 0, 0, 0.6);
+    background: color-mix(in srgb, var(--md-primary-color) 3%, transparent);
+    border-left: 4px solid var(--md-primary-color);
     border-bottom: 0.2px solid rgba(0, 0, 0, 0.04);
     border-top: 0.2px solid rgba(0, 0, 0, 0.04);
     border-right: 0.2px solid rgba(0, 0, 0, 0.04);
+    border-radius: 0 6px 6px 0;
 }
 
 /* GFM Alert 样式覆盖 */
@@ -122,10 +154,17 @@ figcaption,
 ol {
     padding-left: 1.5em;
 }
+ol li::marker {
+    color: var(--md-primary-color);
+    font-weight: 500;
+}
 
 ul {
-    list-style: none;
+    list-style-type: disc;
     padding-left: 1.5em;
+}
+ul li::marker {
+    color: var(--md-primary-color);
 }
 
 li {
@@ -146,8 +185,61 @@ em {
     font-size: inherit;
 }
 
-/* ==================== 链接 ==================== */
+/* ==================== 行内元素 & 链接 ==================== */
 a {
-    color: #576b95;
+    color: var(--md-primary-color);
     text-decoration: none;
+    border-bottom: 1px dashed color-mix(in srgb, var(--md-primary-color) 50%, transparent);
+    transition: all 0.3s ease;
+}
+
+a:hover {
+    border-bottom: 1px solid var(--md-primary-color);
+    background: color-mix(in srgb, var(--md-primary-color) 10%, transparent);
+}
+
+strong, b {
+    color: var(--md-primary-color);
+    font-weight: 600;
+}
+
+code:not([class]) {
+    padding: 0.15em 0.3em;
+    background: color-mix(in srgb, var(--md-primary-color) 8%, transparent);
+    color: color-mix(in srgb, var(--md-primary-color) 80%, black);
+    border-radius: 4px;
+    font-family: 'Fira Code', Menlo, Consolas, Monaco, monospace;
+    font-size: 0.9em;
+}
+
+/* ==================== 表格 ==================== */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+
+th, td {
+    padding: 0.8em 1em;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+th {
+    background: color-mix(in srgb, var(--md-primary-color) 8%, transparent);
+    font-weight: 600;
+    text-align: left;
+}
+
+tr:nth-child(even) {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+@media (prefers-color-scheme: dark) {
+    table { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1); }
+    th { background: color-mix(in srgb, var(--md-primary-color) 15%, transparent); }
+    th, td { border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+    tr:nth-child(even) { background: rgba(255, 255, 255, 0.02); }
 }
