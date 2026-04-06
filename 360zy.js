@@ -128,6 +128,9 @@
         episodeText = item.textContent.replace(url, "").trim();
       }
 
+      // 去掉末尾的 "$" 分隔符
+      episodeText = episodeText.replace(/\$+$/, "");
+
       result.push(`${episodeText} ${url}`.trim());
     });
 
