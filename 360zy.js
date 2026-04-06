@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         360zy 复制助手
 // @namespace    http://github.com/byhooi
-// @version      1.1
+// @version      1.2
 // @description  在360zy.com视频详情页面添加复制按钮，提取剧集名称和播放链接
 // @match        https://360zy.com/voddetail/*.html
 // @grant        GM_setClipboard
@@ -65,31 +65,34 @@
     button.textContent = "复制资源";
     button.id = "copy-resources-btn";
     button.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 9999;
-            padding: 10px 15px;
-            background-color: #007bff;
+            padding: 6px 12px;
+            background-color: #4CAF50;
             color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 14px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            font-size: 12px;
+            transition: background-color 0.3s;
+            margin: 5px 0;
         `;
 
     button.addEventListener("mouseenter", function () {
-      button.style.backgroundColor = "#0056b3";
+      button.style.backgroundColor = "#45a049";
     });
 
     button.addEventListener("mouseleave", function () {
-      button.style.backgroundColor = "#007bff";
+      button.style.backgroundColor = "#4CAF50";
     });
 
     button.addEventListener("click", copyResources);
 
-    document.body.appendChild(button);
+    // 插入到播放列表区域内，而非悬浮在页面上
+    const listcountElement = document.querySelector(".listcount.col");
+    if (listcountElement) {
+      listcountElement.insertBefore(button, listcountElement.firstChild);
+    } else {
+      document.body.appendChild(button);
+    }
     return button;
   }
 
@@ -141,7 +144,7 @@
       button.disabled = true;
       setTimeout(() => {
         button.textContent = "复制资源";
-        button.style.backgroundColor = "#007bff";
+        button.style.backgroundColor = "#4CAF50";
         button.disabled = false;
       }, 2000);
       return;
@@ -153,7 +156,7 @@
       .then(() => {
         console.log(`成功复制 ${playItems.length} 条资源信息`);
         button.textContent = "已复制";
-        button.style.backgroundColor = "#28a745";
+        button.style.backgroundColor = "#45a049";
       })
       .catch((error) => {
         console.error("复制失败:", error);
@@ -164,17 +167,35 @@
         button.disabled = true;
         setTimeout(() => {
           button.textContent = "复制资源";
-          button.style.backgroundColor = "#007bff";
+          button.style.backgroundColor = "#4CAF50";
           button.disabled = false;
         }, 2000);
       });
   }
 
+  function scrollToBottom() {
+    // 滚动页面到底部
+    window.scrollTo({
+      top: document.body.scrollHeight,
+      behavior: "smooth",
+    });
+
+    // 滚动播放列表区域到底部
+    const listcountElement = document.querySelector(".listcount.col");
+    if (listcountElement) {
+      listcountElement.scrollTop = listcountElement.scrollHeight;
+    }
+  }
+
   function init() {
     if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", createCopyButton);
+      document.addEventListener("DOMContentLoaded", () => {
+        createCopyButton();
+        setTimeout(scrollToBottom, 1000);
+      });
     } else {
       createCopyButton();
+      setTimeout(scrollToBottom, 1000);
     }
   }
 
