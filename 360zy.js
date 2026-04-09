@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         360zy 复制助手
 // @namespace    http://github.com/byhooi
-// @version      1.2
+// @version      1.3
 // @description  在360zy.com视频详情页面添加复制按钮，提取剧集名称和播放链接
 // @match        https://360zy.com/voddetail/*.html
 // @grant        GM_setClipboard
@@ -89,7 +89,7 @@
     // 插入到播放列表区域内，而非悬浮在页面上
     const listcountElement = document.querySelector(".listcount.col");
     if (listcountElement) {
-      listcountElement.insertBefore(button, listcountElement.firstChild);
+      listcountElement.appendChild(button);
     } else {
       document.body.appendChild(button);
     }
