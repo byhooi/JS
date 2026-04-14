@@ -136,6 +136,13 @@
         }
 
         function scrollToBottom() {
+            // 滚动页面到底部
+            window.scrollTo({
+                top: document.body.scrollHeight,
+                behavior: "smooth"
+            });
+
+            // 滚动播放列表区域到底部
             const playlists = document.querySelectorAll('[id^="play_"]');
             if (playlists.length > 0) {
                 const lastPlaylist = playlists[playlists.length - 1];
@@ -145,7 +152,9 @@
 
         setupCopyButtons();
         setupSingleCopyLinks();
-        scrollToBottom();
+        
+        // 延迟滚动以确保所有内容都已加载
+        setTimeout(scrollToBottom, 1000);
     }
 
     if (document.readyState === 'loading') {
