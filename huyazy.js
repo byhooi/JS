@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         虎牙/红牛资源复制全部
 // @namespace    http://github.com/byhooi
-// @version      1.1
+// @version      1.2
 // @description  修复虎牙/红牛资源复制问题，支持复制链接、复制名称$链接、复制名称$链接$线路
 // @match        https://huyazy.com/index.php/vod/detail/id/*.html?ac=detail
 // @match        https://www.hongniuziyuan.com/index.php/vod/detail/id/*.html?ac=detail
@@ -65,8 +65,15 @@
             const copy2Button = play2Container.querySelector('input.copy2');
 
             if (copy2Button) {
-                styleButton(copy2Button);
-                copy2Button.addEventListener('click', async function () {
+                // 克隆按钮，以清除原网站绑定的事件（例如弹出 alert）
+                const newCopy2Button = copy2Button.cloneNode(true);
+                newCopy2Button.removeAttribute('onclick');
+                copy2Button.parentNode.replaceChild(newCopy2Button, copy2Button);
+
+                styleButton(newCopy2Button);
+                newCopy2Button.addEventListener('click', async function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
                     await copyLinks('name_links');
                 });
             }
@@ -152,7 +159,7 @@
 
         setupCopyButtons();
         setupSingleCopyLinks();
-        
+
         // 延迟滚动以确保所有内容都已加载
         setTimeout(scrollToBottom, 1000);
     }
