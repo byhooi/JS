@@ -9,27 +9,9 @@
 
 /* ==================== 标题样式 ==================== */
 h1 {
-    padding: 0.5em 0 0.4em 0;
+    padding: 0.5em 1em;
     font-size: calc(var(--md-font-size) * 1.4);
     text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.05);
-    border-bottom: 2px solid color-mix(in srgb, var(--md-primary-color) 15%, transparent);
-    position: relative;
-}
-
-h1::after {
-    content: "";
-    position: absolute;
-    bottom: -2px;
-    left: 0;
-    width: 60px;
-    height: 4px;
-    background: var(--md-primary-color);
-    border-radius: 4px;
-    transition: width 0.3s ease-out;
-}
-
-h1:hover::after {
-    width: 100%;
 }
 
 h2 {
