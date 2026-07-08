@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         豆包AI生图去水印
 // @namespace    http://github.com/byhooi
-// @version      1.1.0
+// @version      1.1.1
 // @description  通过劫持JSON.parse实现豆包AI生图下载原图去水印，支持自定义配置预览图去水印
 // @author       LauZzL
 // @match        https://www.doubao.com/*
@@ -186,21 +186,16 @@
     // 劫持 JSON.parse
     const originalParse = JSON.parse;
 
-    JSON.parse = function(data) {
-        let jsonData;
+    JSON.parse = function (data, reviver) {
+        // 透传 reviver；非法 JSON 只解析一次并按原生行为抛出
+        const jsonData = originalParse.call(this, data, reviver);
 
         try {
-            // 使用原始方法解析
-            jsonData = originalParse.call(this, data);
-
-            // 处理不同类型的响应
-            jsonData = handleCreations(jsonData, data);
-            jsonData = handleImageList(jsonData, data);
-
+            // 处理不同类型的响应（原地修改）
+            handleCreations(jsonData, data);
+            handleImageList(jsonData, data);
         } catch (err) {
-            // 解析失败时使用原始方法
-            log('JSON解析出错，使用原始方法:', err);
-            jsonData = originalParse.call(this, data);
+            log('处理数据出错，返回未修改的解析结果:', err);
         }
 
         return jsonData;

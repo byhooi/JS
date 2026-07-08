@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         虎牙/红牛资源复制全部
 // @namespace    http://github.com/byhooi
-// @version      1.2
+// @version      1.2.1
 // @description  修复虎牙/红牛资源复制问题，支持复制链接、复制名称$链接、复制名称$链接$线路
 // @match        https://huyazy.com/index.php/vod/detail/id/*.html?ac=detail
 // @match        https://www.hongniuziyuan.com/index.php/vod/detail/id/*.html?ac=detail
@@ -14,33 +14,28 @@
 (function () {
     'use strict';
 
-    function initScript() {
-        // 配置过滤关键词，留空则不过滤任何内容
-        const filterKeyword = '';
+    // 配置：过滤关键词，留空则不过滤任何内容
+    const CONFIG = {
+        FILTER_KEYWORD: ''
+    };
 
+    function initScript() {
         async function copyContent(content, button) {
+            const originalText = button.value;
+            const originalColor = button.style.backgroundColor;
             try {
                 await navigator.clipboard.writeText(content);
-
-                const originalText = button.value;
-                const originalColor = button.style.backgroundColor;
                 button.value = '复制成功！';
                 button.style.backgroundColor = '#45a049';
-
-                setTimeout(() => {
-                    button.value = originalText;
-                    button.style.backgroundColor = originalColor;
-                }, 2000);
             } catch (err) {
                 console.error('复制失败:', err);
                 button.value = '复制失败';
                 button.style.backgroundColor = '#ff4444';
-
-                setTimeout(() => {
-                    button.value = originalText;
-                    button.style.backgroundColor = originalColor;
-                }, 2000);
             }
+            setTimeout(() => {
+                button.value = originalText;
+                button.style.backgroundColor = originalColor;
+            }, 2000);
         }
 
         function styleButton(button) {
@@ -74,12 +69,12 @@
                 newCopy2Button.addEventListener('click', async function (e) {
                     e.preventDefault();
                     e.stopPropagation();
-                    await copyLinks('name_links');
+                    await copyLinks();
                 });
             }
         }
 
-        async function copyLinks(mode) {
+        async function copyLinks() {
             let content = '';
             // 只处理 play_2 播放列表
             const play2List = document.getElementById('play_2');
@@ -94,7 +89,7 @@
                         const title = linkElement?.getAttribute('title') || linkElement?.textContent?.split('$')[0] || '';
 
                         // 根据配置的关键词进行过滤
-                        if (!filterKeyword || !title.includes(filterKeyword)) {
+                        if (!CONFIG.FILTER_KEYWORD || !title.includes(CONFIG.FILTER_KEYWORD)) {
                             content += `${title}$${link}\n`;
                         }
                     }
@@ -103,10 +98,16 @@
 
             // 获取 copy2 按钮
             const targetButton = document.querySelector('#play_2 input.copy2');
+            if (!targetButton) return;
 
-            if (targetButton) {
-                await copyContent(content, targetButton);
+            if (!content) {
+                const originalText = targetButton.value;
+                targetButton.value = '无选中内容';
+                setTimeout(() => { targetButton.value = originalText; }, 2000);
+                return;
             }
+
+            await copyContent(content, targetButton);
         }
 
         function setupSingleCopyLinks() {
@@ -114,7 +115,6 @@
                 const target = event.target;
                 // 查找播放列表项的标签
                 if (target.matches('label') && target.previousElementSibling?.type === 'checkbox') {
-                    const checkbox = target.previousElementSibling;
                     const onclick = target.getAttribute('onclick');
 
                     if (onclick) {

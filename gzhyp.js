@@ -1,11 +1,10 @@
 // ==UserScript==
 // @name         微信公众号音频下载
 // @namespace    http://github.com/byhooi
-// @version      1.4
+// @version      1.5
 // @description  下载微信公众号中播放的音频文件
 // @match        https://mp.weixin.qq.com/*
 // @grant        GM_setClipboard
-// @grant        GM_notification
 // @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/gzhyp.js
 // @updateURL https://raw.githubusercontent.com/byhooi/JS/master/gzhyp.js
 // ==/UserScript==
@@ -36,9 +35,6 @@
         buttonCopied: {
             backgroundColor: '#333'
         },
-        buttonDownloading: {
-            backgroundColor: '#FF9800'
-        },
         buttonHidden: {
             display: 'none'
         },
@@ -51,7 +47,6 @@
         AUDIO_API_URL: 'res.wx.qq.com/voice/getvoice',
         HIDE_DELAY: 2000,
         ORIGINAL_TEXT: '下载音频',
-        DOWNLOADING_TEXT: '下载中...',
         DOWNLOADED_TEXT: '已下载',
         ERROR_TEXT: '下载失败'
     };
@@ -115,9 +110,6 @@
                 return;
             }
 
-            const title = document.title.replace(/[\\/:*?"<>|]/g, '_').trim();
-            const fileName = title ? `${title}.mp3` : `audio_${Date.now()}.mp3`;
-
             // 直接在当前页面导航到音频 URL，浏览器/IDM 会拦截下载
             window.location.href = this.latestAudioSrc;
 
@@ -128,12 +120,17 @@
             }, CONSTANTS.HIDE_DELAY);
         }
 
-        handleRightClick(e) {
+        async handleRightClick(e) {
             e.preventDefault();
             if (!this.latestAudioSrc) return;
 
-            GM_setClipboard(this.latestAudioSrc, 'text');
-            this.updateButtonState('链接已复制', { backgroundColor: '#333' });
+            // 优先 Clipboard API，失败回退 GM_setClipboard
+            try {
+                await navigator.clipboard.writeText(this.latestAudioSrc);
+            } catch (err) {
+                GM_setClipboard(this.latestAudioSrc, 'text');
+            }
+            this.updateButtonState('链接已复制', STYLES.buttonCopied);
             setTimeout(() => {
                 this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
             }, CONSTANTS.HIDE_DELAY);
@@ -160,29 +157,24 @@
         }
 
         interceptNetworkRequests() {
-            const originalXHR = window.XMLHttpRequest;
             const self = this;
 
-            window.XMLHttpRequest = function () {
-                const xhr = new originalXHR();
-                const originalOpen = xhr.open;
-
-                xhr.open = function (method, url, ...args) {
-                    if (typeof url === 'string' && url.includes(CONSTANTS.AUDIO_API_URL)) {
-                        debug('XHR拦截到音频请求:', url);
-                        self.setAudioSource(url);
-                    }
-                    return originalOpen.call(this, method, url, ...args);
-                };
-
-                return xhr;
+            // hook prototype，保留原生构造器与 instanceof 行为
+            const originalOpen = XMLHttpRequest.prototype.open;
+            XMLHttpRequest.prototype.open = function (method, url, ...args) {
+                const urlStr = typeof url === 'string' ? url : String(url);
+                if (urlStr.includes(CONSTANTS.AUDIO_API_URL)) {
+                    debug('XHR拦截到音频请求:', urlStr);
+                    self.setAudioSource(urlStr);
+                }
+                return originalOpen.call(this, method, url, ...args);
             };
 
             if (window.fetch) {
                 const originalFetch = window.fetch;
                 window.fetch = function (input, ...args) {
-                    const url = typeof input === 'string' ? input : input.url;
-                    if (url && url.includes(CONSTANTS.AUDIO_API_URL)) {
+                    const url = typeof input === 'string' ? input : (input?.url || String(input));
+                    if (url.includes(CONSTANTS.AUDIO_API_URL)) {
                         debug('Fetch拦截到音频请求:', url);
                         self.setAudioSource(url);
                     }

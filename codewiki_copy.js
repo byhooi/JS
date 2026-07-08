@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Code Wiki Copy URL
 // @namespace    http://github.com/byhooi
-// @version      0.2
+// @version      0.3
 // @description  在 Code Wiki 页面显示复制对应的 GitHub 仓库地址按钮，方便申请仓库。
 // @author       byhooi
 // @match        https://codewiki.google/github.com/*
@@ -57,7 +57,7 @@
     });
 
     // 点击事件
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
         let targetUrl = '';
         const path = window.location.pathname;
         // 稳健的提取逻辑：查找 /github.com/ 的位置
@@ -65,18 +65,21 @@
         const index = path.indexOf(marker);
 
         if (index !== -1) {
-            // 提取 /github.com/... 及其后面的所有内容
-            targetUrl = 'https:/' + path.substring(index) + window.location.search + window.location.hash;
+            // path 从 marker 起形如 /github.com/owner/repo，跳过前导斜杠拼出完整地址
+            targetUrl = 'https://' + path.substring(index + 1) + window.location.search + window.location.hash;
         } else {
             // 降级策略
             targetUrl = window.location.href.replace(/^https:\/\/codewiki\.google\//, 'https://');
         }
 
-        // 执行复制
-        GM_setClipboard(targetUrl);
+        // 执行复制：优先 Clipboard API，失败回退 GM_setClipboard
+        try {
+            await navigator.clipboard.writeText(targetUrl);
+        } catch (e) {
+            GM_setClipboard(targetUrl);
+        }
 
         // 成功反馈
-        const originalContent = button.textContent;
         button.textContent = '✅';
         button.style.backgroundColor = '#238636';
         button.dataset.status = 'copied';
