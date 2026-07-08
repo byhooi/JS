@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         360zy 复制助手
 // @namespace    http://github.com/byhooi
-// @version      1.3
+// @version      1.4
 // @description  在360zy.com视频详情页面添加复制按钮，提取剧集名称和播放链接
 // @match        https://360zy.com/voddetail/*.html
 // @grant        GM_setClipboard
@@ -12,25 +12,38 @@
 (function () {
   "use strict";
 
-  function writeToClipboard(text) {
+  const CONFIG = {
+    DEBUG: false,
+    RESET_DELAY: 2000,
+    SCROLL_DELAY: 1000
+  };
+
+  function debug(...args) {
+    if (CONFIG.DEBUG) console.log("[360zy.js]", ...args);
+  }
+
+  // 优先 Clipboard API，依次回退 GM_setClipboard、execCommand
+  async function writeToClipboard(text) {
     if (!text || !text.trim()) {
-      return Promise.reject(new Error("没有可复制的内容"));
+      throw new Error("没有可复制的内容");
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return;
+      } catch (error) {
+        console.warn("navigator.clipboard 写入失败，尝试回退", error);
+      }
     }
 
     if (typeof GM_setClipboard === "function") {
       try {
         GM_setClipboard(text);
-        return Promise.resolve();
+        return;
       } catch (error) {
         console.warn("GM_setClipboard 失败，尝试其它方案", error);
       }
-    }
-
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      return navigator.clipboard.writeText(text).catch((error) => {
-        console.warn("navigator.clipboard 写入失败，尝试回退", error);
-        return execCommandCopy(text);
-      });
     }
 
     return execCommandCopy(text);
@@ -77,14 +90,14 @@
         `;
 
     button.addEventListener("mouseenter", function () {
-      button.style.backgroundColor = "#45a049";
+      if (!button.disabled) button.style.backgroundColor = "#45a049";
     });
 
     button.addEventListener("mouseleave", function () {
-      button.style.backgroundColor = "#4CAF50";
+      if (!button.disabled) button.style.backgroundColor = "#4CAF50";
     });
 
-    button.addEventListener("click", copyResources);
+    button.addEventListener("click", () => copyResources(button));
 
     // 插入到播放列表区域内，而非悬浮在页面上
     const listcountElement = document.querySelector(".listcount.col");
@@ -99,7 +112,7 @@
   function extractPlayItems() {
     const listcountElement = document.querySelector(".listcount.col");
     if (!listcountElement) {
-      console.log("未找到 .listcount.col 元素");
+      debug("未找到 .listcount.col 元素");
       return [];
     }
 
@@ -137,43 +150,34 @@
     return result;
   }
 
-  function copyResources() {
+  // 显示临时状态，延迟后恢复按钮
+  function showTempState(button, text, color) {
+    button.textContent = text;
+    button.style.backgroundColor = color;
+    button.disabled = true;
+    setTimeout(() => {
+      button.textContent = "复制资源";
+      button.style.backgroundColor = "#4CAF50";
+      button.disabled = false;
+    }, CONFIG.RESET_DELAY);
+  }
+
+  async function copyResources(button) {
     const playItems = extractPlayItems();
-    const button = document.getElementById("copy-resources-btn");
 
     if (playItems.length === 0) {
-      button.textContent = "没有可复制的资源";
-      button.style.backgroundColor = "#ff9800";
-      button.disabled = true;
-      setTimeout(() => {
-        button.textContent = "复制资源";
-        button.style.backgroundColor = "#4CAF50";
-        button.disabled = false;
-      }, 2000);
+      showTempState(button, "没有可复制的资源", "#ff9800");
       return;
     }
 
-    const copyText = playItems.join("\r\n");
-
-    writeToClipboard(copyText)
-      .then(() => {
-        console.log(`成功复制 ${playItems.length} 条资源信息`);
-        button.textContent = "已复制";
-        button.style.backgroundColor = "#45a049";
-      })
-      .catch((error) => {
-        console.error("复制失败:", error);
-        button.textContent = error.message || "复制失败";
-        button.style.backgroundColor = "#dc3545";
-      })
-      .finally(() => {
-        button.disabled = true;
-        setTimeout(() => {
-          button.textContent = "复制资源";
-          button.style.backgroundColor = "#4CAF50";
-          button.disabled = false;
-        }, 2000);
-      });
+    try {
+      await writeToClipboard(playItems.join("\r\n"));
+      debug(`成功复制 ${playItems.length} 条资源信息`);
+      showTempState(button, "已复制", "#45a049");
+    } catch (error) {
+      console.error("复制失败:", error);
+      showTempState(button, error.message || "复制失败", "#dc3545");
+    }
   }
 
   function scrollToBottom() {
@@ -191,16 +195,13 @@
   }
 
   function init() {
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", () => {
-        createCopyButton();
-        setTimeout(scrollToBottom, 1000);
-      });
-    } else {
-      createCopyButton();
-      setTimeout(scrollToBottom, 1000);
-    }
+    createCopyButton();
+    setTimeout(scrollToBottom, CONFIG.SCROLL_DELAY);
   }
 
-  init();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
 })();

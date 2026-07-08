@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         极速资源复制按钮
 // @namespace    http://github.com/byhooi
-// @version      2.5
+// @version      2.5.1
 // @description  在vod-list后添加一个按钮，点击按钮后复制vod-list内容到剪贴板。
 // @match        https://jisuzy.com/index.php/vod/detail/id/*.html?ac=detail
 // @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/jszy.js
@@ -13,6 +13,7 @@
     'use strict';
 
     const CONFIG = {
+        DEBUG: false,
         selectors: {
             vodList: '.vod-list',
             targetParagraph: 'p[style="color: #a8a8a8;"]',
@@ -54,6 +55,10 @@
     };
 
     GM_addStyle(CONFIG.styles.button);
+
+    function debug(...args) {
+        if (CONFIG.DEBUG) console.log('[jszy.js]', ...args);
+    }
 
     function debounce(func, wait) {
         let timeout;
@@ -171,29 +176,29 @@
 
     function init() {
         const vodListElements = document.querySelectorAll(CONFIG.selectors.vodList);
-        
+
         if (vodListElements.length === 0) {
-            console.warn('未找到vod-list元素');
+            debug('未找到vod-list元素');
             return;
         }
 
+        let buttonAdded = false;
         vodListElements.forEach(vodListElement => {
             const targetParagraph = vodListElement.querySelector(CONFIG.selectors.targetParagraph);
-            
-            if (targetParagraph) {
-                const existingButton = targetParagraph.querySelector('.js-copy-btn');
-                if (!existingButton) {
-                    const copyButton = createCopyButton(vodListElement);
-                    targetParagraph.appendChild(copyButton);
-                }
+
+            if (targetParagraph && !targetParagraph.querySelector('.js-copy-btn')) {
+                targetParagraph.appendChild(createCopyButton(vodListElement));
+                buttonAdded = true;
             }
         });
 
-        // 滚动到页面底部
-        window.scrollTo({
-            top: document.body.scrollHeight,
-            behavior: 'smooth'
-        });
+        // 仅在新添加按钮时滚动，避免 MutationObserver 重复触发 init 时反复拽动页面
+        if (buttonAdded) {
+            window.scrollTo({
+                top: document.body.scrollHeight,
+                behavior: 'smooth'
+            });
+        }
     }
 
     if (document.readyState === 'loading') {
@@ -202,7 +207,7 @@
         init();
     }
 
-    if (typeof MutationObserver !== 'undefined') {
+    if (typeof MutationObserver !== 'undefined' && document.body) {
         const observer = new MutationObserver(debounce(init, 1000));
         observer.observe(document.body, {
             childList: true,

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         豆瓣资源复制全部
 // @namespace    http://github.com/byhooi
-// @version      1.2
+// @version      1.3
 // @description  修复豆瓣资源复制问题，支持复制链接、复制名称$链接、复制名称$链接$线路
 // @match        https://dbzy.tv/voddetail/*.html?ac=detail
 // @match        https://dbzy1.com/voddetail/*.html?ac=detail
@@ -14,18 +14,25 @@
 (function () {
   "use strict";
 
+  // 配置：过滤关键词，留空则不过滤任何内容
+  const CONFIG = {
+    FILTER_KEYWORD: ""
+  };
+
+  // 重写 alert 以拦截站点的"复制成功"弹窗，document-start 阶段即生效
+  const originalAlert = window.alert;
+  window.alert = function (message) {
+    if (message && String(message).includes("复制成功")) {
+      return;
+    }
+    return originalAlert.apply(this, arguments);
+  };
+
   function initScript() {
-    // 配置过滤关键词，留空则不过滤任何内容
-    const filterKeyword = "";
-
-    // 移除原有的复制成功提醒
-    removeOriginalCopyAlerts();
-
-    function debounce(fn, wait = 200) {
-      let timer = null;
-      return function (...args) {
-        clearTimeout(timer);
-        timer = setTimeout(() => fn.apply(this, args), wait);
+    // 禁用站点原有的 zclip 复制功能，返回 this 保持链式调用
+    if (window.$ && $.fn) {
+      $.fn.zclip = function () {
+        return this;
       };
     }
 
@@ -66,38 +73,6 @@
         }
       }
       await execCommandCopy(content);
-    }
-
-    function removeOriginalCopyAlerts() {
-      // 重写 alert 函数以阻止复制成功提醒
-      const originalAlert = window.alert;
-      window.alert = function (message) {
-        if (message && message.includes("复制成功")) {
-          return; // 静默忽略复制成功提醒
-        }
-        return originalAlert.apply(this, arguments);
-      };
-
-      // 禁用原有的 zclip 功能
-      if (typeof $ !== "undefined") {
-        $.fn.zclip = function () {
-          return this; // 返回 this 以保持链式调用，但不执行实际功能
-        };
-      }
-
-      const tryPatchZclip = debounce(() => {
-        if (window.$ && $.fn && $.fn.zclip) {
-          $.fn.zclip = function () {
-            return this;
-          };
-        }
-      }, 100);
-
-      if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", tryPatchZclip);
-      } else {
-        tryPatchZclip();
-      }
     }
 
     async function copyContent(content, button) {
@@ -170,7 +145,7 @@
               "";
 
             // 根据配置的关键词进行过滤
-            if (!filterKeyword || !title.includes(filterKeyword)) {
+            if (!CONFIG.FILTER_KEYWORD || !title.includes(CONFIG.FILTER_KEYWORD)) {
               lines.push(`${title}$${link}`);
             }
           }
@@ -207,7 +182,6 @@
           target.matches("label") &&
           target.previousElementSibling?.type === "checkbox"
         ) {
-          const checkbox = target.previousElementSibling;
           const onclick = target.getAttribute("onclick");
 
           if (onclick) {

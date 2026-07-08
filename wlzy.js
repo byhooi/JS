@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         卧龙资源复制全部
 // @namespace    http://github.com/byhooi
-// @version      3.4
+// @version      3.4.1
 // @description  修复卧龙资源复制问题， filterkeyword 配置过滤内容
 // @match        https://wolongzy.cc/index.php/vod/detail/id/*.html
 // @match        https://wolongzyw.com/index.php/vod/detail/id/*.html
@@ -14,10 +14,13 @@
 (function() {
     'use strict';
 
+    // 配置：FILTER_KEYWORD 过滤关键词（留空不过滤）；ENABLE_AUTO_SCROLL 自动滚动开关
+    const CONFIG = {
+        FILTER_KEYWORD: '',
+        ENABLE_AUTO_SCROLL: true
+    };
+
     function initScript() {
-        // 配置过滤关键词，留空则不过滤任何内容
-        const filterKeyword = '';
-        const enableAutoScroll = true;
         let singleCopyHandlerAttached = false;
 
         function debounce(fn, wait = 200) {
@@ -129,7 +132,7 @@
                         return;
                     }
                     const title = titleElement.getAttribute('title') || titleElement.textContent?.trim() || '';
-                    if (filterKeyword && title.includes(filterKeyword)) {
+                    if (CONFIG.FILTER_KEYWORD && title.includes(CONFIG.FILTER_KEYWORD)) {
                         return;
                     }
                     const extractedLink = extractLinkText(linkElement.textContent);
@@ -180,7 +183,7 @@
         }
 
         function scrollToBottom() {
-            if (!enableAutoScroll) {
+            if (!CONFIG.ENABLE_AUTO_SCROLL) {
                 return;
             }
             window.scrollTo({
