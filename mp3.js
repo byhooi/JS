@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         MP3下载
 // @namespace    http://github.com/byhooi
-// @version      3.1
+// @version      3.2.4
 // @description  MP3下载工具
 // @match        https://basic.smartedu.cn/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
+// @connect      *
 // @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/mp3.js
 // @updateURL https://raw.githubusercontent.com/byhooi/JS/master/mp3.js
 // ==/UserScript==
@@ -21,7 +22,8 @@
         TOKEN_DELAY: 3000,
         TOKEN_TIMEOUT: 10000,
         TOAST_DURATION: 3000,
-        BUTTON_RESET_DELAY: 2000
+        BUTTON_RESET_DELAY: 2000,
+        DOWNLOAD_TIMEOUT: 60000
     };
 
     // ====== 状态 ======
@@ -78,6 +80,38 @@
         return title ? `${title}.mp3` : 'download.mp3';
     }
 
+    function requestAudioBlob(url) {
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: addAccessToken(url),
+                responseType: 'blob',
+                timeout: CONFIG.DOWNLOAD_TIMEOUT,
+                onload(response) {
+                    if (response.status >= 200 && response.status < 300 && response.response) {
+                        resolve(response.response);
+                    } else {
+                        reject(new Error(`HTTP ${response.status}`));
+                    }
+                },
+                ontimeout: () => reject(new Error('下载超时')),
+                onerror: () => reject(new Error('下载失败'))
+            });
+        });
+    }
+
+    async function downloadCurrentMP3() {
+        const blob = await requestAudioBlob(mp3Link);
+        const link = document.createElement('a');
+        const objectUrl = URL.createObjectURL(blob);
+        link.href = objectUrl;
+        link.download = getFileNameFromUrl(mp3Link);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    }
+
     // ====== UI ======
     function createDownloadButton() {
         const btn = document.createElement('button');
@@ -94,7 +128,7 @@
         btn.addEventListener('mouseenter', () => { btn.style.opacity = '0.85'; });
         btn.addEventListener('mouseleave', () => { btn.style.opacity = '1'; });
 
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
             if (!mp3Link) {
                 showToast('未找到MP3链接，请刷新页面重试', 'error');
                 return;
@@ -104,20 +138,20 @@
             debug('MP3链接:', mp3Link);
             debug('下载链接:', downloadUrl);
 
-            updateButtonState(btn, 'downloading');
+            // 当前链接只允许下载一次；等待播放列表切换并捕获到新链接后再显示按钮。
+            updateButtonState(btn, 'hidden');
+            btn.disabled = true;
 
-            // 使用 <a> 标签触发下载，更好地兼容下载管理器
-            const link = document.createElement('a');
-            link.href = downloadUrl;
-            link.target = '_blank';
-            link.rel = 'noopener';
-            link.download = getFileNameFromUrl(mp3Link);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-
-            updateButtonState(btn, 'done');
-            setTimeout(() => updateButtonState(btn, 'reset'), CONFIG.BUTTON_RESET_DELAY);
+            try {
+                await downloadCurrentMP3();
+                showToast('MP3 已开始下载', 'success');
+            } catch (error) {
+                debug('下载 MP3 失败:', error);
+                updateButtonState(btn, 'ready');
+                showToast(`下载失败：${error.message || '请稍后重试'}`, 'error');
+            } finally {
+                btn.disabled = false;
+            }
         });
 
         document.body.appendChild(btn);
@@ -126,6 +160,10 @@
 
     function updateButtonState(btn, state) {
         if (!btn) return;
+        if (state === 'hidden') {
+            btn.style.display = 'none';
+            return;
+        }
         // reset 恢复初始文案但保持可见，便于重复下载
         const states = {
             ready: { text: '下载MP3', bg: '#FF9800' },
@@ -147,7 +185,7 @@
 
     function captureMP3(url, source) {
         // 同一链接（如音频分片请求）不重复触发，避免下载中的按钮被打回 ready
-        if (!url || url === mp3Link) return;
+        if (!isMP3Url(url) || url === mp3Link) return;
         mp3Link = url;
         debug(`找到MP3链接 (${source}):`, mp3Link);
         updateButtonState(downloadBtn, 'ready');
@@ -199,6 +237,17 @@
 
             return fetchPromise;
         };
+
+        // 播放列表切换时，播放器可能直接复用已创建的 audio 元素而不重新发起可见请求。
+        // 用捕获阶段监听播放和元数据事件，确保下载目标始终跟随用户最后播放的单元。
+        const captureAudioElement = (event) => {
+            const audio = event.target;
+            if (audio instanceof HTMLMediaElement) {
+                captureMP3(audio.currentSrc || audio.src, `播放器${event.type}`);
+            }
+        };
+        document.addEventListener('play', captureAudioElement, true);
+        document.addEventListener('loadedmetadata', captureAudioElement, true);
     }
 
     // ====== Token 管理 ======

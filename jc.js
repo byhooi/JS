@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         PDF下载
 // @namespace    http://github.com/byhooi
-// @version      4.1
+// @version      4.1.1
 // @description  PDF下载工具
 // @match        https://basic.smartedu.cn/tchMaterial/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
+// @connect      *
 // @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/jc.js
 // @updateURL https://raw.githubusercontent.com/byhooi/JS/master/jc.js
 // ==/UserScript==
@@ -21,7 +22,8 @@
         TOKEN_DELAY: 3000,
         TOKEN_TIMEOUT: 10000,
         TOAST_DURATION: 3000,
-        BUTTON_RESET_DELAY: 2000
+        BUTTON_RESET_DELAY: 2000,
+        DOWNLOAD_TIMEOUT: 120000
     };
 
     // ====== 状态 ======
@@ -85,6 +87,39 @@
         return title ? `${title}.pdf` : 'download.pdf';
     }
 
+    // 通过 GM_xmlhttpRequest 获取文件二进制，避免 <a target="_blank"> 打开 PDF 预览页。
+    function requestPDFBlob(url) {
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url,
+                responseType: 'blob',
+                timeout: CONFIG.DOWNLOAD_TIMEOUT,
+                onload(response) {
+                    if (response.status >= 200 && response.status < 300 && response.response) {
+                        resolve(response.response);
+                    } else {
+                        reject(new Error(`HTTP ${response.status}`));
+                    }
+                },
+                ontimeout: () => reject(new Error('下载超时')),
+                onerror: () => reject(new Error('下载失败'))
+            });
+        });
+    }
+
+    async function downloadPDF(url) {
+        const blob = await requestPDFBlob(url);
+        const link = document.createElement('a');
+        const objectUrl = URL.createObjectURL(blob);
+        link.href = objectUrl;
+        link.download = getFileNameFromTitle();
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    }
+
     // ====== UI ======
     function createDownloadButton() {
         const btn = document.createElement('button');
@@ -101,7 +136,7 @@
         btn.addEventListener('mouseenter', () => { btn.style.opacity = '0.85'; });
         btn.addEventListener('mouseleave', () => { btn.style.opacity = '1'; });
 
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
             if (!pdfLink) {
                 showToast('未找到PDF链接，请刷新页面重试', 'error');
                 return;
@@ -112,17 +147,18 @@
             debug('下载链接:', downloadUrl);
 
             updateButtonState(btn, 'downloading');
-
-            const link = document.createElement('a');
-            link.href = downloadUrl;
-            link.target = '_blank';
-            link.rel = 'noopener';
-            link.download = getFileNameFromTitle();
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-
-            updateButtonState(btn, 'done');
+            btn.disabled = true;
+            try {
+                await downloadPDF(downloadUrl);
+                updateButtonState(btn, 'done');
+                showToast('PDF 已开始下载', 'success');
+            } catch (error) {
+                debug('下载 PDF 失败:', error);
+                updateButtonState(btn, 'ready');
+                showToast(`下载失败：${error.message || '请稍后重试'}`, 'error');
+            } finally {
+                btn.disabled = false;
+            }
             setTimeout(() => updateButtonState(btn, 'reset'), CONFIG.BUTTON_RESET_DELAY);
         });
 
