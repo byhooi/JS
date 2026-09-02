@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         微信公众号音频下载
 // @namespace    http://github.com/byhooi
-// @version      1.6.2
+// @version      1.6.3
 // @description  下载微信公众号中播放的音频文件
 // @match        https://mp.weixin.qq.com/*
 // @run-at       document-start
@@ -184,12 +184,16 @@
                 if (e.target === this.button) this.handleRightClick(e);
             });
 
-            document.addEventListener('play', (e) => {
-                if (e.target.tagName.toLowerCase() === 'audio') {
-                    const src = e.target.src || e.target.querySelector?.('source')?.src;
-                    if (src) this.setAudioSource(src);
-                }
-            }, true);
+            const captureMediaSource = (e) => {
+                const media = e.target;
+                if (!(media instanceof HTMLMediaElement)) return;
+                // 优先保留元素设置的 getvoice 原始地址，避免使用已重定向且可能过期的 CDN 地址。
+                const src = media.src || media.querySelector?.('source')?.src || media.currentSrc;
+                if (src) this.setAudioSource(src);
+            };
+            // 部分公众号播放器用 video 元素承载音频，不能只监听 audio。
+            document.addEventListener('play', captureMediaSource, true);
+            document.addEventListener('playing', captureMediaSource, true);
 
             // 新版公众号播放器以原生 media 请求加载音频，不会经过 XHR/fetch。
             // 播放控件保留 mediaid，点击时直接还原 getvoice 下载地址。
@@ -209,13 +213,13 @@
             let current = element instanceof Element ? element : null;
             for (let depth = 0; current && depth < 8; depth += 1, current = current.parentElement) {
                 for (const attribute of current.attributes) {
-                    if (!/(?:media|voice|mpv)_?id/i.test(attribute.name)) continue;
-                    const match = attribute.value.match(/(?:media|voice|mpv)_?id[=:]([^&\"'\s}]+)/i);
+                    if (!/(?:media|voice|mpv)_?(?:id|file)/i.test(attribute.name) && !/mpvoice/i.test(attribute.name)) continue;
+                    const match = attribute.value.match(/(?:media|voice|mpv)_?(?:id|file)[=:]([^&\"'\s}]+)/i);
                     const mediaId = match ? match[1] : attribute.value;
                     if (/^[A-Za-z0-9_=-]{12,}$/.test(mediaId)) return mediaId;
                 }
 
-                const match = current.outerHTML.match(/(?:media|voice|mpv)_?id[=:\"']+([A-Za-z0-9_=-]{12,})/i);
+                const match = current.outerHTML.match(/(?:media|voice|mpv)_?(?:id|file)[=:\"']+([A-Za-z0-9_=-]{12,})/i);
                 if (match) return match[1];
             }
             return '';
