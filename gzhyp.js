@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         微信公众号音频下载
 // @namespace    http://github.com/byhooi
-// @version      1.5
+// @version      1.6
 // @description  下载微信公众号中播放的音频文件
 // @match        https://mp.weixin.qq.com/*
+// @run-at       document-start
 // @grant        GM_setClipboard
 // @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/gzhyp.js
 // @updateURL https://raw.githubusercontent.com/byhooi/JS/master/gzhyp.js
@@ -45,6 +46,7 @@
 
     const CONSTANTS = {
         AUDIO_API_URL: 'res.wx.qq.com/voice/getvoice',
+        AUDIO_API_ORIGIN: 'https://res.wx.qq.com/voice/getvoice',
         HIDE_DELAY: 2000,
         ORIGINAL_TEXT: '下载音频',
         DOWNLOADED_TEXT: '已下载',
@@ -60,13 +62,18 @@
         }
 
         init() {
-            this.createButton();
             this.setupEventListeners();
             this.interceptNetworkRequests();
+            if (document.body) {
+                this.createButton();
+            } else {
+                document.addEventListener('DOMContentLoaded', () => this.createButton(), { once: true });
+            }
             debug('AudioDownloadButton 初始化完成');
         }
 
         createButton() {
+            if (this.button) return;
             this.button = document.createElement('button');
             this.button.textContent = CONSTANTS.ORIGINAL_TEXT;
             this.applyStyles(this.button, STYLES.button);
@@ -81,11 +88,13 @@
         }
 
         showButton() {
+            if (!this.button) return;
             this.applyStyles(this.button, STYLES.buttonVisible);
             this.clearHideTimeout();
         }
 
         hideButton() {
+            if (!this.button) return;
             this.applyStyles(this.button, STYLES.buttonHidden);
         }
 
@@ -97,6 +106,7 @@
         }
 
         updateButtonState(text, additionalStyles = {}) {
+            if (!this.button) return;
             this.button.textContent = text;
             this.applyStyles(this.button, additionalStyles);
         }
@@ -137,8 +147,13 @@
         }
 
         setupEventListeners() {
-            this.button.addEventListener('click', () => this.handleButtonClick());
-            this.button.addEventListener('contextmenu', (e) => this.handleRightClick(e));
+            // 按钮可能在 document-start 时尚未创建，事件委托避免遗漏。
+            document.addEventListener('click', (e) => {
+                if (e.target === this.button) this.handleButtonClick();
+            });
+            document.addEventListener('contextmenu', (e) => {
+                if (e.target === this.button) this.handleRightClick(e);
+            });
 
             document.addEventListener('play', (e) => {
                 if (e.target.tagName.toLowerCase() === 'audio') {
@@ -146,6 +161,33 @@
                     if (src) this.setAudioSource(src);
                 }
             }, true);
+
+            // 新版公众号播放器以原生 media 请求加载音频，不会经过 XHR/fetch。
+            // 播放控件保留 mediaid，点击时直接还原 getvoice 下载地址。
+            document.addEventListener('click', (e) => {
+                const mediaId = this.findMediaId(e.target);
+                if (mediaId) this.setAudioSource(this.buildAudioUrl(mediaId));
+            }, true);
+        }
+
+        buildAudioUrl(mediaId) {
+            return `${CONSTANTS.AUDIO_API_ORIGIN}?mediaid=${encodeURIComponent(mediaId)}&voice_type=1`;
+        }
+
+        findMediaId(element) {
+            let current = element instanceof Element ? element : null;
+            for (let depth = 0; current && depth < 8; depth += 1, current = current.parentElement) {
+                for (const attribute of current.attributes) {
+                    if (!/(?:media|voice)_?id/i.test(attribute.name)) continue;
+                    const match = attribute.value.match(/(?:media|voice)_?id[=:]([^&\"'\s}]+)/i);
+                    const mediaId = match ? match[1] : attribute.value;
+                    if (/^[A-Za-z0-9_=-]{12,}$/.test(mediaId)) return mediaId;
+                }
+
+                const match = current.outerHTML.match(/(?:media|voice)_?id[=:\"']+([A-Za-z0-9_=-]{12,})/i);
+                if (match) return match[1];
+            }
+            return '';
         }
 
         setAudioSource(src) {
@@ -184,9 +226,5 @@
         }
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => new AudioDownloadButton());
-    } else {
-        new AudioDownloadButton();
-    }
+    new AudioDownloadButton();
 })();
