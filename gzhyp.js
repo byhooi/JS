@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         微信公众号音频下载
 // @namespace    http://github.com/byhooi
-// @version      1.8.1
+// @version      1.9.0
 // @description  下载微信公众号中播放的音频文件
 // @match        https://mp.weixin.qq.com/*
 // @grant        GM_setClipboard
@@ -48,8 +48,18 @@
         AUDIO_API_URL: 'res.wx.qq.com/voice/getvoice',
         HIDE_DELAY: 2000,
         ORIGINAL_TEXT: '下载音频',
+        DOWNLOADING_TEXT: '下载中...',
         DOWNLOADED_TEXT: '已下载',
+        FALLBACK_TEXT: '已触发下载',
+        COPIED_TEXT: '链接已复制',
         ERROR_TEXT: '下载失败'
+    };
+
+    const COLORS = {
+        normal: STYLES.button.backgroundColor,
+        downloading: '#FF9800',
+        success: '#4CAF50',
+        error: '#f44336'
     };
 
     class AudioDownloadButton {
@@ -102,47 +112,56 @@
             this.applyStyles(this.button, additionalStyles);
         }
 
+        resetButton() {
+            this.clearHideTimeout();
+            this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: COLORS.normal });
+        }
+
+        // 延迟恢复初始状态；hide 为 true 时同时收起按钮（下载完成后不再需要）
+        scheduleReset({ hide = false } = {}) {
+            this.clearHideTimeout();
+            this.hideTimeout = setTimeout(() => {
+                this.hideTimeout = null;
+                this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: COLORS.normal });
+                if (hide) this.hideButton();
+            }, CONSTANTS.HIDE_DELAY);
+        }
+
+        buildFileName(src) {
+            try {
+                const mediaid = new URL(src).searchParams.get('mediaid');
+                if (mediaid) return `${mediaid}.mp3`;
+            } catch (_) { /* URL 解析失败时用时间戳兜底 */ }
+            return `audio_${Date.now()}.mp3`;
+        }
+
         handleButtonClick() {
             if (!this.latestAudioSrc) {
-                this.updateButtonState(CONSTANTS.ERROR_TEXT, { backgroundColor: '#f44336' });
-                setTimeout(() => {
-                    this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
-                }, CONSTANTS.HIDE_DELAY);
+                this.updateButtonState(CONSTANTS.ERROR_TEXT, { backgroundColor: COLORS.error });
+                this.scheduleReset();
                 return;
             }
 
             const downloadSrc = this.latestAudioSrc;
-
-            // 从 mediaid 参数提取文件名，回退到时间戳
-            let fileName = 'audio.mp3';
-            try {
-                const mediaid = new URL(downloadSrc).searchParams.get('mediaid');
-                if (mediaid) fileName = `${mediaid}.mp3`;
-            } catch (_) { /* 忽略解析失败 */ }
-
-            this.updateButtonState('下载中...', { backgroundColor: '#FF9800' });
+            this.updateButtonState(CONSTANTS.DOWNLOADING_TEXT, { backgroundColor: COLORS.downloading });
 
             GM_download({
                 url: downloadSrc,
-                name: fileName,
+                name: this.buildFileName(downloadSrc),
+                // 期间若切换到新音频，下面的回调不应再覆盖按钮状态
                 onload: () => {
                     if (this.latestAudioSrc !== downloadSrc) return;
-                    this.updateButtonState(CONSTANTS.DOWNLOADED_TEXT, { backgroundColor: '#4CAF50' });
-                    this.hideTimeout = setTimeout(() => {
-                        this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
-                        this.hideButton();
-                    }, CONSTANTS.HIDE_DELAY);
+                    this.updateButtonState(CONSTANTS.DOWNLOADED_TEXT, { backgroundColor: COLORS.success });
+                    this.scheduleReset({ hide: true });
                 },
                 onerror: (err) => {
                     debug('GM_download 失败，回退到页面跳转:', err);
-                    // 回退：新标签页打开，让浏览器/IDM 拦截
-                    window.open(downloadSrc, '_blank');
-                    if (this.latestAudioSrc !== downloadSrc) return;
-                    this.updateButtonState(CONSTANTS.DOWNLOADED_TEXT, { backgroundColor: '#4CAF50' });
-                    this.hideTimeout = setTimeout(() => {
-                        this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
-                        this.hideButton();
-                    }, CONSTANTS.HIDE_DELAY);
+                    if (this.latestAudioSrc === downloadSrc) {
+                        this.updateButtonState(CONSTANTS.FALLBACK_TEXT, { backgroundColor: COLORS.downloading });
+                        this.scheduleReset();
+                    }
+                    // 同页导航而非 window.open：此处已脱离用户手势，新窗口会被弹窗拦截器拦掉
+                    window.location.href = downloadSrc;
                 },
             });
         }
@@ -157,37 +176,28 @@
             } catch (err) {
                 GM_setClipboard(this.latestAudioSrc, 'text');
             }
-            this.updateButtonState('链接已复制', STYLES.buttonCopied);
-            setTimeout(() => {
-                this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
-            }, CONSTANTS.HIDE_DELAY);
+            this.updateButtonState(CONSTANTS.COPIED_TEXT, STYLES.buttonCopied);
+            this.scheduleReset();
         }
 
         setupEventListeners() {
             this.button.addEventListener('click', () => this.handleButtonClick());
             this.button.addEventListener('contextmenu', (e) => this.handleRightClick(e));
 
-            // 方案二：监听 loadstart，audio 开始加载时 src 已确定赋值
-            document.addEventListener('loadstart', (e) => {
-                if (e.target.tagName && e.target.tagName.toLowerCase() === 'audio') {
-                    const src = e.target.src || e.target.querySelector?.('source')?.src;
-                    if (src && src.includes(CONSTANTS.AUDIO_API_URL)) {
-                        debug('loadstart 捕获音频链接:', src);
-                        this.setAudioSource(src);
-                    }
-                }
-            }, true);
+            // 方案二/三（兜底）：loadstart 时 src 已确定赋值，play 再兜一层
+            ['loadstart', 'play'].forEach((type) => {
+                document.addEventListener(type, (e) => this.captureFromMedia(e.target, type), true);
+            });
+        }
 
-            // 方案三（兜底）：play 事件
-            document.addEventListener('play', (e) => {
-                if (e.target.tagName && e.target.tagName.toLowerCase() === 'audio') {
-                    const src = e.target.src || e.target.querySelector?.('source')?.src;
-                    if (src && src.includes(CONSTANTS.AUDIO_API_URL)) {
-                        debug('play 捕获音频链接:', src);
-                        this.setAudioSource(src);
-                    }
-                }
-            }, true);
+        // audio 和 video 都可能承载公众号音频，统一按 HTMLMediaElement 处理
+        captureFromMedia(target, eventType) {
+            if (!(target instanceof HTMLMediaElement)) return;
+            const src = target.src || target.querySelector?.('source')?.src;
+            if (src && src.includes(CONSTANTS.AUDIO_API_URL)) {
+                debug(`${eventType} 捕获音频链接:`, src);
+                this.setAudioSource(src);
+            }
         }
 
         setAudioSource(src) {
@@ -196,12 +206,8 @@
                 const isNewAudio = audioSrc !== this.latestAudioSrc;
                 this.latestAudioSrc = audioSrc;
 
-                // 新音频到达时不能沿用上一首的“已下载”状态。
-                if (isNewAudio) {
-                    this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, {
-                        backgroundColor: STYLES.button.backgroundColor
-                    });
-                }
+                // 新音频到达时不能沿用上一首的"已下载"状态。
+                if (isNewAudio) this.resetButton();
                 debug('捕获音频链接:', this.latestAudioSrc);
                 this.showButton();
             }
@@ -211,8 +217,8 @@
             const self = this;
 
             // 方案一（最可靠）：Hook HTMLMediaElement.prototype 的 src setter
-            // getvoice 请求由浏览器原生 audio 元素发起（initiator: other），
-            // 不走 XHR/Fetch，但 src 赋值必然经过此 setter
+            // getvoice 请求由浏览器原生 audio 元素发起（initiator: other），不走 XHR/Fetch。
+            // 注意 setAttribute('src', ...) 绕过此 setter，故仍需 loadstart 兜底。
             const srcDescriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
             if (srcDescriptor && srcDescriptor.set) {
                 Object.defineProperty(HTMLMediaElement.prototype, 'src', {
@@ -226,6 +232,7 @@
                     get() {
                         return srcDescriptor.get.call(this);
                     },
+                    enumerable: srcDescriptor.enumerable,
                     configurable: true,
                 });
             }
