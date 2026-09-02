@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         微信公众号音频下载
 // @namespace    http://github.com/byhooi
-// @version      1.6
+// @version      1.6.1
 // @description  下载微信公众号中播放的音频文件
 // @match        https://mp.weixin.qq.com/*
 // @run-at       document-start
 // @grant        GM_setClipboard
+// @grant        GM_download
 // @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/gzhyp.js
 // @updateURL https://raw.githubusercontent.com/byhooi/JS/master/gzhyp.js
 // ==/UserScript==
@@ -36,6 +37,9 @@
         buttonCopied: {
             backgroundColor: '#333'
         },
+        buttonDownloading: {
+            backgroundColor: '#FF9800'
+        },
         buttonHidden: {
             display: 'none'
         },
@@ -49,6 +53,7 @@
         AUDIO_API_ORIGIN: 'https://res.wx.qq.com/voice/getvoice',
         HIDE_DELAY: 2000,
         ORIGINAL_TEXT: '下载音频',
+        DOWNLOADING_TEXT: '下载中...',
         DOWNLOADED_TEXT: '已下载',
         ERROR_TEXT: '下载失败'
     };
@@ -120,13 +125,37 @@
                 return;
             }
 
-            // 直接在当前页面导航到音频 URL，浏览器/IDM 会拦截下载
-            window.location.href = this.latestAudioSrc;
+            const title = document.title.replace(/[\\/:*?"<>|]/g, '_').trim();
+            const fileName = title ? `${title}.mp3` : `audio_${Date.now()}.mp3`;
+            this.updateButtonState(CONSTANTS.DOWNLOADING_TEXT, STYLES.buttonDownloading);
 
+            // GM_download 由扩展直接发起下载，可处理 getvoice 的跨域 302，且不会导航当前页面。
+            try {
+                GM_download({
+                    url: this.latestAudioSrc,
+                    name: fileName,
+                    saveAs: false,
+                    onload: () => this.finishDownload(),
+                    onerror: (error) => this.handleDownloadError(error)
+                });
+            } catch (error) {
+                this.handleDownloadError(error);
+            }
+        }
+
+        finishDownload() {
             this.updateButtonState(CONSTANTS.DOWNLOADED_TEXT, { backgroundColor: '#4CAF50' });
             setTimeout(() => {
                 this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
                 this.hideButton();
+            }, CONSTANTS.HIDE_DELAY);
+        }
+
+        handleDownloadError(error) {
+            debug('音频下载失败:', error);
+            this.updateButtonState(CONSTANTS.ERROR_TEXT, { backgroundColor: '#f44336' });
+            setTimeout(() => {
+                this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
             }, CONSTANTS.HIDE_DELAY);
         }
 
@@ -190,11 +219,11 @@
             return '';
         }
 
-        setAudioSource(src) {
+        setAudioSource(src, showButton = true) {
             if (src && src.trim()) {
                 this.latestAudioSrc = src.trim();
                 debug('捕获音频链接:', this.latestAudioSrc);
-                this.showButton();
+                if (showButton) this.showButton();
             }
         }
 
@@ -207,7 +236,7 @@
                 const urlStr = typeof url === 'string' ? url : String(url);
                 if (urlStr.includes(CONSTANTS.AUDIO_API_URL)) {
                     debug('XHR拦截到音频请求:', urlStr);
-                    self.setAudioSource(urlStr);
+                    self.setAudioSource(urlStr, false);
                 }
                 return originalOpen.call(this, method, url, ...args);
             };
@@ -218,7 +247,7 @@
                     const url = typeof input === 'string' ? input : (input?.url || String(input));
                     if (url.includes(CONSTANTS.AUDIO_API_URL)) {
                         debug('Fetch拦截到音频请求:', url);
-                        self.setAudioSource(url);
+                        self.setAudioSource(url, false);
                     }
                     return originalFetch.call(this, input, ...args);
                 };
