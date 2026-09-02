@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         微信公众号音频下载
 // @namespace    http://github.com/byhooi
-// @version      1.5
+// @version      1.8.1
 // @description  下载微信公众号中播放的音频文件
 // @match        https://mp.weixin.qq.com/*
 // @grant        GM_setClipboard
+// @grant        GM_download
 // @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/gzhyp.js
 // @updateURL https://raw.githubusercontent.com/byhooi/JS/master/gzhyp.js
 // ==/UserScript==
@@ -110,14 +111,40 @@
                 return;
             }
 
-            // 直接在当前页面导航到音频 URL，浏览器/IDM 会拦截下载
-            window.location.href = this.latestAudioSrc;
+            const downloadSrc = this.latestAudioSrc;
 
-            this.updateButtonState(CONSTANTS.DOWNLOADED_TEXT, { backgroundColor: '#4CAF50' });
-            setTimeout(() => {
-                this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
-                this.hideButton();
-            }, CONSTANTS.HIDE_DELAY);
+            // 从 mediaid 参数提取文件名，回退到时间戳
+            let fileName = 'audio.mp3';
+            try {
+                const mediaid = new URL(downloadSrc).searchParams.get('mediaid');
+                if (mediaid) fileName = `${mediaid}.mp3`;
+            } catch (_) { /* 忽略解析失败 */ }
+
+            this.updateButtonState('下载中...', { backgroundColor: '#FF9800' });
+
+            GM_download({
+                url: downloadSrc,
+                name: fileName,
+                onload: () => {
+                    if (this.latestAudioSrc !== downloadSrc) return;
+                    this.updateButtonState(CONSTANTS.DOWNLOADED_TEXT, { backgroundColor: '#4CAF50' });
+                    this.hideTimeout = setTimeout(() => {
+                        this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
+                        this.hideButton();
+                    }, CONSTANTS.HIDE_DELAY);
+                },
+                onerror: (err) => {
+                    debug('GM_download 失败，回退到页面跳转:', err);
+                    // 回退：新标签页打开，让浏览器/IDM 拦截
+                    window.open(downloadSrc, '_blank');
+                    if (this.latestAudioSrc !== downloadSrc) return;
+                    this.updateButtonState(CONSTANTS.DOWNLOADED_TEXT, { backgroundColor: '#4CAF50' });
+                    this.hideTimeout = setTimeout(() => {
+                        this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, { backgroundColor: STYLES.button.backgroundColor });
+                        this.hideButton();
+                    }, CONSTANTS.HIDE_DELAY);
+                },
+            });
         }
 
         async handleRightClick(e) {
@@ -140,17 +167,41 @@
             this.button.addEventListener('click', () => this.handleButtonClick());
             this.button.addEventListener('contextmenu', (e) => this.handleRightClick(e));
 
-            document.addEventListener('play', (e) => {
-                if (e.target.tagName.toLowerCase() === 'audio') {
+            // 方案二：监听 loadstart，audio 开始加载时 src 已确定赋值
+            document.addEventListener('loadstart', (e) => {
+                if (e.target.tagName && e.target.tagName.toLowerCase() === 'audio') {
                     const src = e.target.src || e.target.querySelector?.('source')?.src;
-                    if (src) this.setAudioSource(src);
+                    if (src && src.includes(CONSTANTS.AUDIO_API_URL)) {
+                        debug('loadstart 捕获音频链接:', src);
+                        this.setAudioSource(src);
+                    }
+                }
+            }, true);
+
+            // 方案三（兜底）：play 事件
+            document.addEventListener('play', (e) => {
+                if (e.target.tagName && e.target.tagName.toLowerCase() === 'audio') {
+                    const src = e.target.src || e.target.querySelector?.('source')?.src;
+                    if (src && src.includes(CONSTANTS.AUDIO_API_URL)) {
+                        debug('play 捕获音频链接:', src);
+                        this.setAudioSource(src);
+                    }
                 }
             }, true);
         }
 
         setAudioSource(src) {
             if (src && src.trim()) {
-                this.latestAudioSrc = src.trim();
+                const audioSrc = src.trim();
+                const isNewAudio = audioSrc !== this.latestAudioSrc;
+                this.latestAudioSrc = audioSrc;
+
+                // 新音频到达时不能沿用上一首的“已下载”状态。
+                if (isNewAudio) {
+                    this.updateButtonState(CONSTANTS.ORIGINAL_TEXT, {
+                        backgroundColor: STYLES.button.backgroundColor
+                    });
+                }
                 debug('捕获音频链接:', this.latestAudioSrc);
                 this.showButton();
             }
@@ -159,7 +210,27 @@
         interceptNetworkRequests() {
             const self = this;
 
-            // hook prototype，保留原生构造器与 instanceof 行为
+            // 方案一（最可靠）：Hook HTMLMediaElement.prototype 的 src setter
+            // getvoice 请求由浏览器原生 audio 元素发起（initiator: other），
+            // 不走 XHR/Fetch，但 src 赋值必然经过此 setter
+            const srcDescriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
+            if (srcDescriptor && srcDescriptor.set) {
+                Object.defineProperty(HTMLMediaElement.prototype, 'src', {
+                    set(value) {
+                        if (value && typeof value === 'string' && value.includes(CONSTANTS.AUDIO_API_URL)) {
+                            debug('src setter 捕获音频链接:', value);
+                            self.setAudioSource(value);
+                        }
+                        srcDescriptor.set.call(this, value);
+                    },
+                    get() {
+                        return srcDescriptor.get.call(this);
+                    },
+                    configurable: true,
+                });
+            }
+
+            // XHR 拦截（兜底）
             const originalOpen = XMLHttpRequest.prototype.open;
             XMLHttpRequest.prototype.open = function (method, url, ...args) {
                 const urlStr = typeof url === 'string' ? url : String(url);
@@ -170,6 +241,7 @@
                 return originalOpen.call(this, method, url, ...args);
             };
 
+            // Fetch 拦截（兜底）
             if (window.fetch) {
                 const originalFetch = window.fetch;
                 window.fetch = function (input, ...args) {
