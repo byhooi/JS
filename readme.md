@@ -25,6 +25,12 @@
 
 快速提取公众号音频和图片资源。
 
+### 豆瓣电影增强
+
+- **[douban.js](douban.js)** - 豆瓣电影默认仅自己可见（v1.0.1）
+
+支持 `movie.douban.com` 和 `search.douban.com/movie/*`，自动勾选页面及动态弹窗中的“仅自己可见”。每个复选框只设置一次，允许手动取消。
+
 ### AI 工具增强
 - **doubao.js** - 豆包 AI 生图去水印（v1.1.0）
 
@@ -72,6 +78,12 @@
 2. 脚本会自动拦截文件链接
 3. 自动获取 accessToken（如需要）
 4. 在控制台查看下载链接或自动触发下载
+
+### 豆瓣电影默认仅自己可见
+
+1. 访问 [豆瓣电影](https://movie.douban.com/)或[电影搜索页](https://search.douban.com/movie/subject_search)
+2. 打开包含“仅自己可见”选项的表单，脚本会自动勾选该选项
+3. 如需公开，可手动取消勾选，再自行保存表单
 
 ### 豆包去水印
 1. 访问 [豆包 AI](https://www.doubao.com/)
