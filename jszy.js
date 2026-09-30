@@ -1,12 +1,14 @@
 // ==UserScript==
 // @name         极速资源复制按钮
 // @namespace    http://github.com/byhooi
-// @version      2.5.1
-// @description  在vod-list后添加一个按钮，点击按钮后复制vod-list内容到剪贴板。
+// @version      2.6.0
+// @description  在vod-list后添加复制按钮，悬浮面板配置标题关键词排除/仅保留并自动保存。
 // @match        https://jisuzy.com/index.php/vod/detail/id/*.html?ac=detail
 // @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/jszy.js
 // @updateURL https://raw.githubusercontent.com/byhooi/JS/master/jszy.js
 // @grant        GM_addStyle
+// @grant        GM_getValue
+// @grant        GM_setValue
 // ==/UserScript==
 
 (function() {
@@ -14,6 +16,9 @@
 
     const CONFIG = {
         DEBUG: false,
+        FILTER_KEYWORD: '',
+        FILTER_MODE: 'exclude',
+        STORAGE_KEY: 'jszy-copy-filter',
         selectors: {
             vodList: '.vod-list',
             targetParagraph: 'p[style="color: #a8a8a8;"]',
@@ -54,7 +59,113 @@
         }
     };
 
+    const filterSettings = loadFilterSettings();
+
     GM_addStyle(CONFIG.styles.button);
+
+    function loadFilterSettings() {
+        let saved;
+        try {
+            saved = GM_getValue(CONFIG.STORAGE_KEY, {});
+        } catch (err) {
+            console.error('读取过滤设置失败，使用默认配置:', err);
+        }
+        return {
+            keyword: typeof saved?.keyword === 'string' ? saved.keyword : CONFIG.FILTER_KEYWORD,
+            mode: saved?.mode === 'include' || saved?.mode === 'exclude' ? saved.mode : CONFIG.FILTER_MODE
+        };
+    }
+
+    function matchesFilter(title) {
+        const matchesKeyword = title.includes(filterSettings.keyword);
+        return !filterSettings.keyword || (filterSettings.mode === 'include' ? matchesKeyword : !matchesKeyword);
+    }
+
+    function setupFilterPanel() {
+        if (!document.querySelector(CONFIG.selectors.vodList) || document.getElementById('jszy-filter-panel')) return;
+
+        const panel = document.createElement('div');
+        panel.id = 'jszy-filter-panel';
+        panel.innerHTML = `
+            <style>
+                #jszy-filter-panel {
+                    position: fixed; right: 16px; bottom: 16px; z-index: 2147483647;
+                    width: 260px; max-width: calc(100vw - 32px); box-sizing: border-box;
+                    padding: 12px; border: 1px solid #dce6dc; border-radius: 8px;
+                    background: #fff; color: #333; box-shadow: 0 3px 16px #0002;
+                    font: 13px/1.5 sans-serif; text-align: left;
+                }
+                #jszy-filter-panel * { box-sizing: border-box; }
+                #jszy-filter-panel .filter-header {
+                    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+                }
+                #jszy-filter-panel button {
+                    padding: 4px 8px; border: 0; border-radius: 4px; margin: 0;
+                    background: #4CAF50; color: #fff; cursor: pointer; font: inherit;
+                }
+                #jszy-filter-panel label { display: block; margin: 10px 0 4px; font: inherit; }
+                #jszy-filter-panel input, #jszy-filter-panel select {
+                    display: block; width: 100%; height: 32px; padding: 4px 6px; margin: 0;
+                    border: 1px solid #ccc; border-radius: 4px;
+                    background: #fff; color: #333; font: inherit;
+                }
+                #jszy-filter-panel .filter-hint { margin: 8px 0; color: #666; font-size: 12px; }
+                #jszy-filter-panel [hidden] { display: none !important; }
+            </style>
+            <div class="filter-header">
+                <strong>批量复制过滤</strong>
+                <button type="button" id="jszy-filter-toggle" aria-expanded="true" aria-controls="jszy-filter-body">收起</button>
+            </div>
+            <div id="jszy-filter-body">
+                <label for="jszy-filter-keyword">标题关键词</label>
+                <input type="text" id="jszy-filter-keyword" placeholder="留空则不过滤" autocomplete="off">
+                <label for="jszy-filter-mode">过滤方式</label>
+                <select id="jszy-filter-mode">
+                    <option value="exclude">排除包含关键词的条目</option>
+                    <option value="include">仅保留包含关键词的条目</option>
+                </select>
+                <p class="filter-hint">按标题过滤当前列表的批量复制，不修改页面列表。</p>
+                <button type="button" id="jszy-filter-clear">清空关键词</button>
+                <p class="filter-hint" id="jszy-filter-status" role="status">更改立即生效并自动保存</p>
+            </div>
+        `;
+
+        const keywordInput = panel.querySelector('#jszy-filter-keyword');
+        const modeSelect = panel.querySelector('#jszy-filter-mode');
+        const status = panel.querySelector('#jszy-filter-status');
+        const body = panel.querySelector('#jszy-filter-body');
+        const toggle = panel.querySelector('#jszy-filter-toggle');
+        keywordInput.value = filterSettings.keyword;
+        modeSelect.value = filterSettings.mode;
+
+        function updateSettings() {
+            filterSettings.keyword = keywordInput.value;
+            filterSettings.mode = modeSelect.value;
+            try {
+                GM_setValue(CONFIG.STORAGE_KEY, { ...filterSettings });
+                status.textContent = '已保存，立即生效';
+                status.style.color = '#2e7d32';
+            } catch (err) {
+                console.error('保存过滤设置失败:', err);
+                status.textContent = '已生效，但保存失败，刷新后可能丢失';
+                status.style.color = '#c62828';
+            }
+        }
+
+        keywordInput.addEventListener('input', updateSettings);
+        modeSelect.addEventListener('change', updateSettings);
+        panel.querySelector('#jszy-filter-clear').addEventListener('click', () => {
+            keywordInput.value = '';
+            updateSettings();
+            keywordInput.focus();
+        });
+        toggle.addEventListener('click', () => {
+            body.hidden = !body.hidden;
+            toggle.textContent = body.hidden ? '展开' : '收起';
+            toggle.setAttribute('aria-expanded', String(!body.hidden));
+        });
+        document.body.appendChild(panel);
+    }
 
     function debug(...args) {
         if (CONFIG.DEBUG) console.log('[jszy.js]', ...args);
@@ -124,11 +235,11 @@
                 const listTitleElements = vodListElement.querySelectorAll(CONFIG.selectors.listTitle);
                 const textToCopy = Array.from(listTitleElements)
                     .map(element => element.innerText.trim())
-                    .filter(text => text.length > 0)
+                    .filter(text => text.length > 0 && matchesFilter(text.split('$')[0]))
                     .join('\n');
 
                 if (!textToCopy) {
-                    showFeedback(button, '没有可复制的内容', 'warning');
+                    showFeedback(button, '没有符合条件的内容', 'warning');
                     setTimeout(() => resetButton(button), CONFIG.button.resetDelay);
                     return;
                 }
@@ -182,6 +293,7 @@
             return;
         }
 
+        setupFilterPanel();
         let buttonAdded = false;
         vodListElements.forEach(vodListElement => {
             const targetParagraph = vodListElement.querySelector(CONFIG.selectors.targetParagraph);
