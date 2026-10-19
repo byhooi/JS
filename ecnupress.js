@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         华师大教材音频清单导出
 // @namespace    http://github.com/byhooi
-// @version      2.0.0
+// @version      2.0.1
 // @description  捕获页面播放的 HLS 音频地址并按集记录，导出清单后配合本地脚本批量转 MP3
 // @match        https://a.ecnupress.com.cn/*
 // @grant        GM_xmlhttpRequest
@@ -21,12 +21,12 @@
  *
  * 页面音频是 HLS（m3u8 + AES-128 加密 TS 分片），且播放列表在点击播放后才请求。
  * 脚本只负责捕获 m3u8 地址并按集记录；真正的下载、解密和转码交给本地
- * Python/全新听力.pyw（内部调用 ffmpeg），这样浏览器端几乎没有开销。
+ * 全新听力.pyw（位于 GitHub/Python 仓库，内部调用 ffmpeg），这样浏览器端几乎没有开销。
  *
  * 使用流程：
  *   1. 在页面上逐集点击播放，脚本自动记录每集地址
  *   2. 点「导出清单」，得到 ecnupress_episodes.json
- *   3. 双击 Python/全新听力.pyw，选择清单并批量转换
+ *   3. 双击 全新听力.pyw（GitHub/Python 仓库），选择清单并批量转换
  */
 
 (function () {

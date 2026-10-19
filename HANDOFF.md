@@ -15,7 +15,7 @@
 教材页面播放
    ↓  ecnupress.js（油猴脚本）
 捕获 m3u8 地址 → 按集记录 → 导出 ecnupress_episodes.json
-   ↓  Python/全新听力.pyw（tkinter GUI 或 CLI）
+   ↓  全新听力.pyw（GitHub/Python 仓库，tkinter GUI 或 CLI）
 调用 ffmpeg：下载分片 + 自动 AES-128 解密 + 转 MP3
    ↓
 Unit 01.mp3 … Unit 25.mp3
@@ -26,12 +26,12 @@ Unit 01.mp3 … Unit 25.mp3
 | 文件 | 状态 | 说明 |
 |------|------|------|
 | `ecnupress.js` | 新增，v2.0.0 | 油猴脚本：只捕获地址、记录、导出清单 |
-| `Python/全新听力.pyw` | 新增 | tkinter 图形界面 + 命令行，批量调用 ffmpeg |
+| `全新听力.pyw` | 新增（位于 GitHub/Python 仓库） | tkinter 图形界面 + 命令行，批量调用 ffmpeg |
 | `readme.md` | 已更新 | 脚本清单与使用说明 |
 | `CLAUDE.md` / `AGENTS.md` | 已更新且同步 | 分类表、HLS 小节、仓库结构 |
 | `1.har` | 未跟踪 | 测试抓包，不应提交（含 CDN 签名地址） |
 
-旧的 `ecnupress_batch.pyw` 已移动并改名为 `Python/全新听力.pyw`，不存在其他副本。
+旧的 `ecnupress_batch.pyw` 已移动并改名为 `全新听力.pyw`，现位于另一个仓库 `D:\Documents\Github\Python\`，本仓库内不存在副本。
 
 ## HAR 分析结论
 
@@ -55,7 +55,7 @@ Unit 01.mp3 … Unit 25.mp3
 - **顺序 = 点击播放顺序**；标题取 `document.title`，若为 URL 则回退为 `第_<section 后 6 位>_节`
 - 浏览器端**不要**再加回转码逻辑（早期版本用 mux.js + lamejs，比原生 ffmpeg 慢一个数量级，已全部移除）
 
-## Python 工具要点（Python/全新听力.pyw）
+## Python 工具要点（`全新听力.pyw`，GitHub/Python 仓库）
 
 - 双击打开 GUI；带命令行参数时走 CLI
 - 只接受 JSON 清单，不再支持音频目录（早期 m4a 方案已废弃）
@@ -72,7 +72,7 @@ Unit 01.mp3 … Unit 25.mp3
 - CLI：
 
   ```bash
-  python "Python/全新听力.pyw" ecnupress_episodes.json -o ./mp3
+  python "D:\Documents\Github\Python\全新听力.pyw" ecnupress_episodes.json -o ./mp3
   ```
 
 ## 已验证
@@ -92,7 +92,7 @@ Unit 01.mp3 … Unit 25.mp3
 1. 电脑浏览器安装 Tampermonkey，安装 `ecnupress.js`
 2. 打开教材页面，逐集点播放（有自动连播的话脚本会自动记录）
 3. 面板显示“已记录 25 集”后，点「导出清单」
-4. 双击 `Python/全新听力.pyw`，选择 JSON，确认输出目录，点「开始转换」
+4. 双击 `D:\Documents\Github\Python\全新听力.pyw`，选择 JSON，确认输出目录，点「开始转换」
 5. 把输出目录里的 `Unit 01.mp3`–`Unit 25.mp3` 拷入倾听者
 
 ## 环境与依赖

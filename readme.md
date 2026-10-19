@@ -18,7 +18,7 @@
 ### 文件下载类
 - **jc.js** - 自动拦截并下载 PDF 文件
 - **mp3.js** - 自动拦截并下载 MP3 音频文件
-- **ecnupress.js** - 华师大教材音频清单导出（配合 Python/全新听力.pyw 批量转 MP3）
+- **ecnupress.js** - 华师大教材音频清单导出（配合 GitHub/Python 仓库的 全新听力.pyw 批量转 MP3）
 
 支持 accessToken 自动获取，JSONP/JSON 格式解析。
 
@@ -86,12 +86,12 @@
 
 ### 华师大教材音频清单导出
 
-油猴脚本只负责记录音频地址，下载和转码由本地 `Python/全新听力.pyw` 完成。
+油猴脚本只负责记录音频地址，下载和转码由另一个仓库（GitHub/Python）的 `全新听力.pyw` 完成。
 
 1. 在电脑浏览器（已安装 Tampermonkey）打开华东师大出版社的教材音频页面
 2. 逐集点击播放，右下角面板会自动记录每集的 m3u8 地址（显示“已记录 N 集”）
 3. 全部播放完后，点「导出清单」，得到 `ecnupress_episodes.json`
-4. **双击 `Python/全新听力.pyw`** 打开图形界面：
+4. **双击 `全新听力.pyw`**（位于 `D:\Documents\Github\Python\`）打开图形界面：
    - 点「选择清单文件…」选中刚导出的 JSON
    - 确认输出目录，点「开始转换」
 5. 转换完成后可直接打开输出目录，把 MP3 拷入倾听者
@@ -99,7 +99,7 @@
 也可以使用命令行：
 
 ```bash
-python Python/全新听力.pyw ecnupress_episodes.json -o ./mp3
+python "D:\Documents\Github\Python\全新听力.pyw" ecnupress_episodes.json -o ./mp3
 ```
 
 音频采用 HLS（m3u8 + AES-128 加密 TS 分片），ffmpeg 会自动下载分片并解密。输出默认 64k / 16000 Hz 单声道，单集约 4 秒；文件名按单元编号命名为 `Unit 01.mp3`、`Unit 02.mp3`……便于在倾听者中按顺序播放。依赖 Python 3、tkinter（Python 自带）和 ffmpeg。
