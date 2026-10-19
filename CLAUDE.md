@@ -10,6 +10,7 @@ Tampermonkey/Greasemonkey 用户脚本集合仓库。每个 `.js` 文件是独�
 
 ```
 *.js          # 活跃脚本（根目录）
+Python/       # 配套本地工具（全新听力.pyw：tkinter 图形界面 + 命令行，批量调用 ffmpeg 转码）
 backup/       # 已归档/停用的脚本（gzhsc.js, jdpj.js）
 readme.md     # 面向使用者的脚本清单与安装说明
 AGENTS.md     # 本文件的镜像副本（供 Codex 使用）
@@ -28,6 +29,7 @@ AGENTS.md     # 本文件的镜像副本（供 Codex 使用）
 | **微信公众号增强** | gzhyp.js（音频下载） | class 封装 + 媒体元素 src hook |
 | **JSON 劫持类** | doubao.js（豆包生图去水印） | JSON.parse 替换 + 递归对象遍历 |
 | **GitHub / Code Wiki** | codewiki.js, deepwiki.js, codewiki_copy.js | DOM 注入按钮 |
+| **教材音频清单** | ecnupress.js + Python/全新听力.pyw | m3u8 捕获 + 多集记录/清单导出；本地 ffmpeg 批量转码 |
 
 注意 `gzhsc.js`（公众号素材库图片链接复制，依赖 jQuery）已归档在 `backup/`，不在活跃脚本之列。
 
@@ -131,6 +133,15 @@ XHR 和 Fetch 拦截**必须合并在同一个 `setupInterceptors()` 函数中**
 
 替换原生 `JSON.parse`，对返回对象递归查找并修改特定字段。注意递归深度限制（50 层）。
 
+### HLS 音频清单导出（ecnupress.js）
+
+页面音频是 m3u8 + AES-128 加密 TS 分片，且播放列表在点击播放后才请求。脚本只捕获地址，不做解密或转码：
+
+- 必须 `@run-at document-start`，并通过 `unsafeWindow` hook 页面的 XHR/fetch——油猴沙箱里的 `window.XMLHttpRequest` 不是页面实际使用的对象
+- `PerformanceObserver` 监听 `resource` 作为兜底，覆盖媒体元素直接加载 HLS 的情况
+- 捕获到的 m3u8 地址按集存入 `GM_setValue`，导出为 JSON 清单
+- 下载、AES-128 解密和 MP3 编码全部由 `Python/全新听力.pyw` 调用 ffmpeg 完成；不要往浏览器端加回转码逻辑（纯 JS 编码器比原生 ffmpeg 慢一个数量级）
+
 ### 动态页面适配
 
 目标站点分两类，适配手段不同：
@@ -146,6 +157,8 @@ XHR 和 Fetch 拦截**必须合并在同一个 `setupInterceptors()` 函数中**
 - `GM_download`：文件下载
 - `GM_setClipboard`：剪贴板回退方案（优先用 Clipboard API，仅在 catch 中使用）
 - `GM_addStyle`：动态样式
+- `unsafeWindow`：hook 页面自身的网络 API（如 ecnupress.js）
+- `@connect`：`GM_xmlhttpRequest` 的跨域目标域名，按需声明
 - `none`：无需特殊权限
 
 ## 版本更新规范
