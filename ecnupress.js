@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         华师大教材音频清单导出
 // @namespace    http://github.com/byhooi
-// @version      2.0.1
+// @version      2.0.2
 // @description  捕获页面播放的 HLS 音频地址并按集记录，导出清单后配合本地脚本批量转 MP3
 // @match        https://a.ecnupress.com.cn/*
 // @grant        GM_xmlhttpRequest
@@ -244,6 +244,8 @@
             clear.addEventListener('click', () => {
                 if (!confirm('确定清空已记录的 ' + UI.history.length + ' 集地址？')) return;
                 UI.history = [];
+                // 重置当前地址，否则清空后重播最后一集会被去重逻辑拦截
+                UI.currentUrl = '';
                 saveHistory();
                 setStatus('记录已清空');
             });
@@ -288,7 +290,38 @@
         return title;
     }
 
+    // 合并其他标签页写入的记录，避免全量覆盖导致互相丢失
+    function mergeStoredHistory() {
+        const stored = loadHistory();
+        if (stored.length === 0) return;
+
+        const memoryByUrl = new Map();
+        for (const item of UI.history) {
+            if (item && item.url) memoryByUrl.set(item.url, item);
+        }
+
+        const merged = [];
+        const seen = new Set();
+        for (const item of stored) {
+            if (!item || !item.url || seen.has(item.url)) continue;
+            merged.push(memoryByUrl.get(item.url) || item);
+            seen.add(item.url);
+        }
+        for (const item of UI.history) {
+            if (!item || !item.url || seen.has(item.url)) continue;
+            merged.push(item);
+            seen.add(item.url);
+        }
+
+        merged.forEach((item, i) => {
+            item.index = i + 1;
+        });
+        UI.history = merged;
+    }
+
     function recordEpisode(url) {
+        mergeStoredHistory();
+
         const existing = UI.history.find(item => item.url === url);
         if (existing) {
             existing.capturedAt = new Date().toISOString();
@@ -369,13 +402,16 @@
     function inspectUrl(url) {
         if (typeof url !== 'string' || !url) return;
 
-        if (!/^https?:/i.test(url)) {
-            if (url.startsWith('//')) url = location.protocol + url;
-            else return;
+        let absolute;
+        try {
+            absolute = new URL(url, location.href).href;
+        } catch (e) {
+            return;
         }
 
-        if (!/\.m3u8(?:[?#]|$)/i.test(url)) return;
-        onPlaylistCaptured(url);
+        if (!/^https?:/i.test(absolute)) return;
+        if (!/\.m3u8(?:[?#]|$)/i.test(absolute)) return;
+        onPlaylistCaptured(absolute);
     }
 
     function installHooks() {
@@ -403,7 +439,9 @@
             if (typeof originalFetch === 'function' && !originalFetch.__epHooked) {
                 const wrapped = function (input) {
                     try {
-                        const url = typeof input === 'string' ? input : (input && input.url);
+                        const url = typeof input === 'string'
+                            ? input
+                            : (input && (input.url || input.href));
                         inspectUrl(url);
                     } catch (e) { debug(e); }
                     return originalFetch.apply(this, arguments);
