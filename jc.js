@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         PDF下载
 // @namespace    http://github.com/byhooi
-// @version      4.2.0
+// @version      4.2.2
 // @description  PDF下载工具
 // @match        https://basic.smartedu.cn/tchMaterial/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
+// @grant        GM_download
 // @connect      *
 // @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/jc.js
 // @updateURL https://raw.githubusercontent.com/byhooi/JS/master/jc.js
@@ -147,7 +148,49 @@
         downloadBtn.style.backgroundColor = '#FF9800';
     }
 
+    // 交给浏览器下载管理器流式写盘：大 PDF 不必先完整读进内存再复制一遍，速度快得多
+    function downloadViaGM(url) {
+        return new Promise((resolve, reject) => {
+            if (typeof GM_download !== 'function') {
+                reject(new Error('GM_download 不可用'));
+                return;
+            }
+            let started = false;
+            debug('GM_download 发起:', url);
+            GM_download({
+                url,
+                name: getFileNameFromTitle(),
+                headers: { 'Referer': CONFIG.REFERER },
+                onprogress(event) {
+                    started = true;
+                    if (!event.lengthComputable || !event.total) return;
+                    updateDownloadProgress(Math.floor((event.loaded / event.total) * 100));
+                },
+                onload: () => {
+                    debug('GM_download 完成');
+                    resolve();
+                },
+                onerror: (error) => {
+                    const err = new Error(error?.error || 'GM_download 失败');
+                    // 已开始传输后失败（多半是用户取消），回退重下会造成"偷偷又下一遍"
+                    err.started = started;
+                    reject(err);
+                },
+                ontimeout: () => reject(new Error('下载超时'))
+            });
+        });
+    }
+
     async function downloadPDF(url) {
+        // 优先原生下载；不可用或失败时回退 blob 方式（回退路径才能拿到 HTTP 状态码）
+        try {
+            await downloadViaGM(url);
+            return;
+        } catch (error) {
+            if (error.started) throw error;
+            debug('GM_download 失败，回退 blob 下载:', error.message);
+        }
+
         const blob = await requestPDFBlob(url);
         // blob 落盘需要额外时间，避免按钮停在 100% 让用户以为卡住
         if (downloadBtn) downloadBtn.textContent = '保存中...';
@@ -177,7 +220,10 @@
         btn.addEventListener('mouseenter', () => { btn.style.opacity = '0.85'; });
         btn.addEventListener('mouseleave', () => { btn.style.opacity = '1'; });
 
-        btn.addEventListener('click', async () => {
+        // 页面在 document 上监听点击以触发自身下载/预取逻辑，按钮点击冒泡会误触发（日志里的 detail 403）
+        btn.addEventListener('pointerdown', (e) => e.stopPropagation());
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
             if (!pdfLink) {
                 showToast('未找到PDF链接，请刷新页面重试', 'error');
                 return;
