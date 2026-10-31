@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PDF下载
 // @namespace    http://github.com/byhooi
-// @version      4.1.1
+// @version      4.2.0
 // @description  PDF下载工具
 // @match        https://basic.smartedu.cn/tchMaterial/*
 // @run-at       document-start
@@ -23,14 +23,17 @@
         TOKEN_TIMEOUT: 10000,
         TOAST_DURATION: 3000,
         BUTTON_RESET_DELAY: 2000,
-        DOWNLOAD_TIMEOUT: 120000
+        DOWNLOAD_TIMEOUT: 300000,
+        // 资源 CDN 校验 Referer，缺失会被直接 403
+        REFERER: 'https://basic.smartedu.cn/'
     };
 
     // ====== 状态 ======
     let pdfLink = '';
     let accessToken = '';
     let tokenRequestUrl = '';
-    let isTokenRequesting = false;
+    let tokenPromise = null;
+    let isDownloading = false;
     let downloadBtn = null;
     let toastContainer = null;
 
@@ -72,9 +75,29 @@
         return fileMatch ? decodeURIComponent(fileMatch[1]) : url;
     }
 
-    // 生成最终下载地址：清理 headers 参数与 hash，拼接 accessToken
+    // 把候选地址规范成绝对 URL 并校验确为 PDF；file= 可能解出相对路径或 detail 页地址
+    function normalizePDFUrl(url) {
+        if (typeof url !== 'string' || !url) return '';
+        let candidate = extractPDFLink(url);
+        if (!/^https?:\/\//i.test(candidate)) {
+            try {
+                candidate = new URL(candidate, location.href).href;
+            } catch (e) {
+                return '';
+            }
+        }
+        return candidate.includes('.pdf') ? candidate : '';
+    }
+
+    // 生成最终下载地址：只剔除 headers 参数与 hash，其余 query 参数保留，最后拼接 accessToken
     function buildDownloadUrl(url) {
-        url = extractPDFLink(url).split('&headers=')[0].split('#')[0];
+        // 同时剔除旧 accessToken，避免 403 重试时新旧两个 token 并存、服务端取到失效的那个
+        url = extractPDFLink(url)
+            .replace(/[?&]headers=[^&#]*/g, '')
+            .replace(/[?&]accessToken=[^&#]*/g, '')
+            .replace(/#.*$/, '')
+            .replace(/[?&]$/, '')
+            .replace(/\?&/, '?');
         if (accessToken) {
             const separator = url.includes('?') ? '&' : '?';
             url += separator + 'accessToken=' + encodeURIComponent(accessToken);
@@ -88,6 +111,7 @@
     }
 
     // 通过 GM_xmlhttpRequest 获取文件二进制，避免 <a target="_blank"> 打开 PDF 预览页。
+    // 必须带 Referer：资源 CDN 校验来源，缺失会直接返回 403。
     function requestPDFBlob(url) {
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
@@ -95,21 +119,38 @@
                 url,
                 responseType: 'blob',
                 timeout: CONFIG.DOWNLOAD_TIMEOUT,
+                headers: { 'Referer': CONFIG.REFERER },
+                onprogress(event) {
+                    if (!event.lengthComputable || !event.total) return;
+                    updateDownloadProgress(Math.floor((event.loaded / event.total) * 100));
+                },
                 onload(response) {
                     if (response.status >= 200 && response.status < 300 && response.response) {
                         resolve(response.response);
                     } else {
-                        reject(new Error(`HTTP ${response.status}`));
+                        // 带上状态码与响应片段，便于定位 403 是 token 失效还是权限问题
+                        const error = new Error(`HTTP ${response.status}`);
+                        error.status = response.status;
+                        error.body = (response.responseText || '').slice(0, 200);
+                        reject(error);
                     }
                 },
                 ontimeout: () => reject(new Error('下载超时')),
-                onerror: () => reject(new Error('下载失败'))
+                onerror: () => reject(new Error('网络错误'))
             });
         });
     }
 
+    function updateDownloadProgress(percent) {
+        if (!downloadBtn) return;
+        downloadBtn.textContent = `下载中 ${percent}%`;
+        downloadBtn.style.backgroundColor = '#FF9800';
+    }
+
     async function downloadPDF(url) {
         const blob = await requestPDFBlob(url);
+        // blob 落盘需要额外时间，避免按钮停在 100% 让用户以为卡住
+        if (downloadBtn) downloadBtn.textContent = '保存中...';
         const link = document.createElement('a');
         const objectUrl = URL.createObjectURL(blob);
         link.href = objectUrl;
@@ -141,25 +182,43 @@
                 showToast('未找到PDF链接，请刷新页面重试', 'error');
                 return;
             }
+            if (isDownloading) return;
 
-            const downloadUrl = buildDownloadUrl(pdfLink);
-            debug('PDF链接:', pdfLink);
-            debug('下载链接:', downloadUrl);
-
-            updateButtonState(btn, 'downloading');
+            isDownloading = true;
             btn.disabled = true;
+            updateButtonState(btn, 'downloading');
+            debug('PDF链接:', pdfLink);
+
             try {
-                await downloadPDF(downloadUrl);
+                // 下载前确保拿到 token：点击早于页面 3 秒延迟获取时，URL 会缺 accessToken 而 403
+                if (!accessToken) await tryGetAccessToken();
+
+                try {
+                    await downloadPDF(buildDownloadUrl(pdfLink));
+                } catch (error) {
+                    // 403 且已带 token：token 可能过期，清掉重取后重试一次
+                    if (error.status === 403 && accessToken) {
+                        debug('403，刷新 token 后重试:', error.body);
+                        accessToken = '';
+                        await tryGetAccessToken();
+                        if (!accessToken) throw error;
+                        await downloadPDF(buildDownloadUrl(pdfLink));
+                    } else {
+                        throw error;
+                    }
+                }
+
                 updateButtonState(btn, 'done');
                 showToast('PDF 已开始下载', 'success');
             } catch (error) {
-                debug('下载 PDF 失败:', error);
+                debug('下载 PDF 失败:', error, error.body);
                 updateButtonState(btn, 'ready');
                 showToast(`下载失败：${error.message || '请稍后重试'}`, 'error');
             } finally {
+                isDownloading = false;
                 btn.disabled = false;
+                setTimeout(() => updateButtonState(btn, 'reset'), CONFIG.BUTTON_RESET_DELAY);
             }
-            setTimeout(() => updateButtonState(btn, 'reset'), CONFIG.BUTTON_RESET_DELAY);
         });
 
         document.body.appendChild(btn);
@@ -188,8 +247,8 @@
         const urlStr = typeof url === 'string' ? url : String(url);
         debug(`${source}请求:`, urlStr);
 
-        const potentialPDF = extractPDFLink(urlStr);
-        if (potentialPDF.includes('.pdf') && potentialPDF !== pdfLink) {
+        const potentialPDF = normalizePDFUrl(urlStr);
+        if (potentialPDF && potentialPDF !== pdfLink) {
             pdfLink = potentialPDF;
             debug(`找到PDF链接 (${source}):`, pdfLink);
             updateButtonState(downloadBtn, 'ready');
@@ -306,62 +365,68 @@
         return `Rw${os}/${chrome}/${uid}`;
     }
 
-    async function tryGetAccessToken() {
-        if (isTokenRequesting || accessToken) return;
-        isTokenRequesting = true;
+    // 并发调用共享同一个进行中的请求，避免重复拉取 token；返回最终 accessToken（可能为空）
+    function tryGetAccessToken() {
+        if (accessToken) return Promise.resolve(accessToken);
+        if (tokenPromise) return tokenPromise;
 
-        try {
-            if (tokenRequestUrl) {
-                debug('使用捕获的URL获取token');
-                accessToken = await getAccessTokenFromUrl(tokenRequestUrl);
-                debug('成功获取accessToken');
-                return;
-            }
-
-            // 尝试常见 token URL
-            const commonUrls = [
-                'https://sso.basic.smartedu.cn/v1.1/sso/tokens',
-                'https://sso.basic.smartedu.cn/api/tokens',
-                'https://api.basic.smartedu.cn/token'
-            ];
-
-            const deviceId = generateDeviceId();
-            for (const baseUrl of commonUrls) {
-                try {
-                    const callback = 'nd_uc_sdk_' + Date.now();
-                    const bodys = JSON.stringify({
-                        "$headers": {
-                            "Accept": "application/json",
-                            "Content-Type": "application/json",
-                            "SDP-APP-ID": "e5649925-441d-4a53-b525-51a2f1c4e0a8",
-                            "DEVICE-ID": deviceId,
-                            "Host": "sso.basic.smartedu.cn"
-                        },
-                        "$body": "{}",
-                        "$method": "GET"
-                    });
-                    const fullUrl = `${baseUrl}?$proxy=proxyhttp&bodys=${encodeURIComponent(bodys)}&callback=${callback}`;
-
-                    debug('尝试URL:', baseUrl);
-                    accessToken = await getAccessTokenFromUrl(fullUrl);
-                    tokenRequestUrl = fullUrl;
+        tokenPromise = (async () => {
+            try {
+                if (tokenRequestUrl) {
+                    debug('使用捕获的URL获取token');
+                    accessToken = await getAccessTokenFromUrl(tokenRequestUrl);
                     debug('成功获取accessToken');
-                    break;
-                } catch (error) {
-                    debug(`URL ${baseUrl} 获取失败:`, error.message);
+                    return accessToken;
                 }
-            }
 
-            if (!accessToken) {
-                throw new Error('所有尝试都失败了');
+                // 尝试常见 token URL
+                const commonUrls = [
+                    'https://sso.basic.smartedu.cn/v1.1/sso/tokens',
+                    'https://sso.basic.smartedu.cn/api/tokens',
+                    'https://api.basic.smartedu.cn/token'
+                ];
+
+                const deviceId = generateDeviceId();
+                for (const baseUrl of commonUrls) {
+                    try {
+                        const callback = 'nd_uc_sdk_' + Date.now();
+                        const bodys = JSON.stringify({
+                            "$headers": {
+                                "Accept": "application/json",
+                                "Content-Type": "application/json",
+                                "SDP-APP-ID": "e5649925-441d-4a53-b525-51a2f1c4e0a8",
+                                "DEVICE-ID": deviceId,
+                                "Host": "sso.basic.smartedu.cn"
+                            },
+                            "$body": "{}",
+                            "$method": "GET"
+                        });
+                        const fullUrl = `${baseUrl}?$proxy=proxyhttp&bodys=${encodeURIComponent(bodys)}&callback=${callback}`;
+
+                        debug('尝试URL:', baseUrl);
+                        accessToken = await getAccessTokenFromUrl(fullUrl);
+                        tokenRequestUrl = fullUrl;
+                        debug('成功获取accessToken');
+                        break;
+                    } catch (error) {
+                        debug(`URL ${baseUrl} 获取失败:`, error.message);
+                    }
+                }
+
+                if (!accessToken) {
+                    throw new Error('所有尝试都失败了');
+                }
+            } catch (error) {
+                debug('自动获取accessToken失败:', error);
+                showToast('自动获取Token失败，请手动输入', 'warning');
+                accessToken = prompt('自动获取accessToken失败，请手动输入:') || '';
+            } finally {
+                tokenPromise = null;
             }
-        } catch (error) {
-            debug('自动获取accessToken失败:', error);
-            showToast('自动获取Token失败，请手动输入', 'warning');
-            accessToken = prompt('自动获取accessToken失败，请手动输入:') || '';
-        } finally {
-            isTokenRequesting = false;
-        }
+            return accessToken;
+        })();
+
+        return tokenPromise;
     }
 
     // ====== 资源发现 ======
@@ -369,8 +434,10 @@
         const selectors = 'a[href*=".pdf"], iframe[src*=".pdf"], embed[src*=".pdf"], object[data*=".pdf"]';
         for (const el of document.querySelectorAll(selectors)) {
             const href = el.href || el.src || el.data;
-            if (href) {
-                pdfLink = extractPDFLink(href);
+            // 选择器只保证属性里出现过 .pdf，解出的地址仍要校验，避免把 detail 页当成 PDF 去下载
+            const candidate = normalizePDFUrl(href);
+            if (candidate) {
+                pdfLink = candidate;
                 debug('DOM中找到PDF链接:', pdfLink);
                 updateButtonState(downloadBtn, 'ready');
                 return true;
