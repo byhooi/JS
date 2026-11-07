@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         极速资源复制按钮
 // @namespace    http://github.com/byhooi
-// @version      2.6.0
-// @description  在vod-list后添加复制按钮，悬浮面板配置标题关键词排除/仅保留并自动保存。
+// @version      2.7.0
+// @description  在vod-list后添加复制按钮与 m3u8 播放列表下载，悬浮面板配置标题关键词排除/仅保留并自动保存。
 // @match        https://jisuzy.com/index.php/vod/detail/id/*.html?ac=detail
 // @downloadURL https://raw.githubusercontent.com/byhooi/JS/master/jszy.js
 // @updateURL https://raw.githubusercontent.com/byhooi/JS/master/jszy.js
@@ -55,6 +55,27 @@
                 .js-copy-btn.success {
                     background: linear-gradient(135deg, #45a049, #2e7d32);
                 }
+                .js-download-btn {
+                    background: linear-gradient(135deg, #2196F3, #1976D2);
+                    color: white;
+                    border: none;
+                    padding: 8px 16px;
+                    margin-left: 8px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 14px;
+                    font-weight: 500;
+                    transition: all 0.3s ease;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }
+                .js-download-btn:hover {
+                    background: linear-gradient(135deg, #1976D2, #1565C0);
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+                }
+                .js-download-btn.success {
+                    background: linear-gradient(135deg, #45a049, #2e7d32);
+                }
             `
         }
     };
@@ -79,6 +100,65 @@
     function matchesFilter(title) {
         const matchesKeyword = title.includes(filterSettings.keyword);
         return !filterSettings.keyword || (filterSettings.mode === 'include' ? matchesKeyword : !matchesKeyword);
+    }
+
+    // ===== m3u8 播放列表导出 =====
+
+    // 从 "标题$链接" 这类值里取出纯链接
+    function toUrl(value) {
+        const text = String(value || '').trim();
+        const index = text.lastIndexOf('$');
+        return (index >= 0 ? text.slice(index + 1) : text).trim();
+    }
+
+    // 页面标题里混着站点名和"剧情介绍"，先裁掉再用标题标签兜底
+    function getPlaylistTitle() {
+        let name = String(document.title || '').trim();
+        for (const marker of ['剧情介绍', ' - ', '--', '_']) {
+            const index = name.indexOf(marker);
+            if (index > 0) name = name.slice(0, index);
+        }
+        name = name.replace(/评分.*$/, '').replace(/\s+/g, ' ').trim();
+        if (name) return name;
+
+        const headingText = document
+            .querySelector('h1, h2')
+            ?.textContent?.replace(/评分.*$/, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+        return headingText || 'playlist';
+    }
+
+    function sanitizeFileName(name) {
+        const cleaned = String(name)
+            .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .replace(/[. ]+$/, '');
+        return (cleaned || 'playlist').slice(0, 80);
+    }
+
+    // 与 电影.py 输出一致：#EXTM3U + 每项 EXTINF，UTF-8 / LF / 无 BOM
+    function buildPlaylistContent(entries) {
+        const lines = ['#EXTM3U'];
+        entries.forEach(({ title, link }) => {
+            const safeTitle = String(title || '').replace(/[\r\n]+/g, ' ').trim();
+            lines.push('', `#EXTINF:-1,${safeTitle}`, link);
+        });
+        return `${lines.join('\n')}\n`;
+    }
+
+    function savePlaylist(entries) {
+        const blob = new Blob([buildPlaylistContent(entries)], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `${sanitizeFileName(getPlaylistTitle())}.m3u8`;
+        anchor.style.display = 'none';
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
     }
 
     function setupFilterPanel() {
@@ -224,6 +304,22 @@
         await execCommandCopy(text);
     }
 
+    // 按当前过滤设置收集一个 vod-list 下的条目
+    function extractEntries(vodListElement) {
+        const entries = [];
+        vodListElement.querySelectorAll(CONFIG.selectors.listTitle).forEach(element => {
+            const text = element.innerText.trim();
+            if (!text) return;
+
+            const index = text.indexOf('$');
+            const title = index >= 0 ? text.slice(0, index).trim() : text;
+            if (!matchesFilter(title)) return;
+
+            entries.push({ title, link: toUrl(text), text });
+        });
+        return entries;
+    }
+
     function createCopyButton(vodListElement) {
         const button = document.createElement('button');
         button.className = 'js-copy-btn';
@@ -232,10 +328,8 @@
         
         const handleClick = debounce(async () => {
             try {
-                const listTitleElements = vodListElement.querySelectorAll(CONFIG.selectors.listTitle);
-                const textToCopy = Array.from(listTitleElements)
-                    .map(element => element.innerText.trim())
-                    .filter(text => text.length > 0 && matchesFilter(text.split('$')[0]))
+                const textToCopy = extractEntries(vodListElement)
+                    .map(entry => entry.text)
                     .join('\n');
 
                 if (!textToCopy) {
@@ -258,6 +352,36 @@
                     resetButton(button);
                 }, CONFIG.button.resetDelay);
             }
+        }, 300);
+
+        button.addEventListener('click', handleClick);
+        return button;
+    }
+
+    function createDownloadButton(vodListElement) {
+        const button = document.createElement('button');
+        button.className = 'js-download-btn';
+        button.textContent = '下载M3U8';
+        button.dataset.originalText = '下载M3U8';
+
+        const handleClick = debounce(() => {
+            const entries = extractEntries(vodListElement);
+
+            if (entries.length === 0) {
+                showFeedback(button, '没有符合条件的内容', 'warning');
+                setTimeout(() => resetButton(button), CONFIG.button.resetDelay);
+                return;
+            }
+
+            try {
+                savePlaylist(entries.map(entry => ({ title: entry.title, link: entry.link })));
+                showFeedback(button, `已下载 ${entries.length} 条`, 'success');
+            } catch (err) {
+                console.error('导出播放列表失败:', err);
+                showFeedback(button, '导出失败', 'error');
+            }
+
+            setTimeout(() => resetButton(button), CONFIG.button.resetDelay);
         }, 300);
 
         button.addEventListener('click', handleClick);
@@ -301,6 +425,11 @@
             if (targetParagraph && !targetParagraph.querySelector('.js-copy-btn')) {
                 targetParagraph.appendChild(createCopyButton(vodListElement));
                 buttonAdded = true;
+            }
+
+            // 每条线路各自导出自己的播放列表，与复制按钮的粒度保持一致
+            if (targetParagraph && !targetParagraph.querySelector('.js-download-btn')) {
+                targetParagraph.appendChild(createDownloadButton(vodListElement));
             }
         });
 

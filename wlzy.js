@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         卧龙资源复制全部
 // @namespace    http://github.com/byhooi
-// @version      3.5.0
-// @description  修复卧龙资源复制问题，悬浮面板配置标题关键词排除/仅保留并自动保存
+// @version      3.6.0
+// @description  修复卧龙资源复制问题，支持一键下载 m3u8 播放列表，悬浮面板配置标题关键词排除/仅保留并自动保存
 // @match        https://wolongzy.cc/index.php/vod/detail/id/*.html
 // @match        https://wolongzyw.com/index.php/vod/detail/id/*.html
 // @grant        GM_getValue
@@ -40,6 +40,65 @@
     function matchesFilter(title) {
         const matchesKeyword = title.includes(filterSettings.keyword);
         return !filterSettings.keyword || (filterSettings.mode === 'include' ? matchesKeyword : !matchesKeyword);
+    }
+
+    // ===== m3u8 播放列表导出 =====
+
+    // 从 "标题$链接" 这类值里取出纯链接
+    function toUrl(value) {
+        const text = String(value || '').trim();
+        const index = text.lastIndexOf('$');
+        return (index >= 0 ? text.slice(index + 1) : text).trim();
+    }
+
+    // 页面标题里混着站点名和"剧情介绍"，先裁掉再用标题标签兜底
+    function getPlaylistTitle() {
+        let name = String(document.title || '').trim();
+        for (const marker of ['剧情介绍', ' - ', '--', '_']) {
+            const index = name.indexOf(marker);
+            if (index > 0) name = name.slice(0, index);
+        }
+        name = name.replace(/评分.*$/, '').replace(/\s+/g, ' ').trim();
+        if (name) return name;
+
+        const headingText = document
+            .querySelector('h1, h2')
+            ?.textContent?.replace(/评分.*$/, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+        return headingText || 'playlist';
+    }
+
+    function sanitizeFileName(name) {
+        const cleaned = String(name)
+            .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .replace(/[. ]+$/, '');
+        return (cleaned || 'playlist').slice(0, 80);
+    }
+
+    // 与 电影.py 输出一致：#EXTM3U + 每项 EXTINF，UTF-8 / LF / 无 BOM
+    function buildPlaylistContent(entries) {
+        const lines = ['#EXTM3U'];
+        entries.forEach(({ title, link }) => {
+            const safeTitle = String(title || '').replace(/[\r\n]+/g, ' ').trim();
+            lines.push('', `#EXTINF:-1,${safeTitle}`, link);
+        });
+        return `${lines.join('\n')}\n`;
+    }
+
+    function savePlaylist(entries) {
+        const blob = new Blob([buildPlaylistContent(entries)], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `${sanitizeFileName(getPlaylistTitle())}.m3u8`;
+        anchor.style.display = 'none';
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
     }
 
     function setupFilterPanel() {
@@ -221,6 +280,26 @@
             return rawText.trim() || null;
         }
 
+        // 按当前过滤设置收集播放列表条目
+        function collectEntries() {
+            const entries = [];
+            document.querySelectorAll('.playlist .text-style').forEach((item) => {
+                const titleElement = item.querySelector('.copy_text');
+                const linkElement = item.querySelector('font[color="red"]');
+                if (!titleElement || !linkElement) {
+                    return;
+                }
+                const title = titleElement.getAttribute('title') || titleElement.textContent?.trim() || '';
+                const extractedLink = extractLinkText(linkElement.textContent);
+                if (!extractedLink) return;
+                // 备用标题可能包含链接，过滤时移除链接，但保持原有复制格式
+                const filterTitle = titleElement.getAttribute('title') || title.replace(extractedLink, '').split('$')[0].trim();
+                if (!matchesFilter(filterTitle)) return;
+                entries.push({ title, link: extractedLink, url: toUrl(extractedLink) });
+            });
+            return entries;
+        }
+
         function setupCopyAllButton() {
             const copyAllButton = document.querySelector('.copy_checked');
             if (!copyAllButton || copyAllButton.dataset.wlzyCopyAttached === 'true') {
@@ -231,22 +310,8 @@
             copyAllButton.dataset.wlzyCopyAttached = 'true';
 
             copyAllButton.addEventListener('click', async function () {
-                const videoItems = document.querySelectorAll('.playlist .text-style');
-                const lines = [];
-                videoItems.forEach((item) => {
-                    const titleElement = item.querySelector('.copy_text');
-                    const linkElement = item.querySelector('font[color="red"]');
-                    if (!titleElement || !linkElement) {
-                        return;
-                    }
-                    const title = titleElement.getAttribute('title') || titleElement.textContent?.trim() || '';
-                    const extractedLink = extractLinkText(linkElement.textContent);
-                    if (!extractedLink) return;
-                    // 备用标题可能包含链接，过滤时移除链接，但保持原有复制格式
-                    const filterTitle = titleElement.getAttribute('title') || title.replace(extractedLink, '').split('$')[0].trim();
-                    if (!matchesFilter(filterTitle)) return;
-                    lines.push(`${title} ${extractedLink}`);
-                });
+                const entries = collectEntries();
+                const lines = entries.map((entry) => `${entry.title} ${entry.link}`);
                 if (lines.length === 0) {
                     const originalText = copyAllButton.innerText;
                     const originalColor = copyAllButton.style.backgroundColor;
@@ -260,6 +325,57 @@
                 }
                 await copyContent(lines.join('\n'), copyAllButton);
             });
+        }
+
+        function setupDownloadButton() {
+            if (document.getElementById('wlzy-download-m3u8')) {
+                return;
+            }
+            const copyAllButton = document.querySelector('.copy_checked');
+            if (!copyAllButton) {
+                return;
+            }
+
+            const downloadButton = document.createElement('button');
+            downloadButton.id = 'wlzy-download-m3u8';
+            styleButton(downloadButton);
+            downloadButton.style.backgroundColor = '#2196F3';
+            downloadButton.style.marginLeft = '8px';
+            downloadButton.innerText = '下载M3U8';
+            downloadButton.addEventListener('click', function () {
+                downloadPlaylist(downloadButton);
+            });
+
+            copyAllButton.parentNode.insertBefore(downloadButton, copyAllButton.nextSibling);
+        }
+
+        function downloadPlaylist(button) {
+            const entries = collectEntries();
+
+            if (entries.length === 0) {
+                button.innerText = '没有符合条件的资源';
+                button.style.backgroundColor = '#ff9800';
+                window.setTimeout(() => {
+                    button.innerText = '下载M3U8';
+                    button.style.backgroundColor = '#2196F3';
+                }, 2000);
+                return;
+            }
+
+            try {
+                savePlaylist(entries.map((entry) => ({ title: entry.title, link: entry.url })));
+                button.innerText = `已下载 ${entries.length} 条`;
+                button.style.backgroundColor = '#45a049';
+            } catch (err) {
+                console.error('导出播放列表失败:', err);
+                button.innerText = '导出失败';
+                button.style.backgroundColor = '#ff4444';
+            }
+
+            window.setTimeout(() => {
+                button.innerText = '下载M3U8';
+                button.style.backgroundColor = '#2196F3';
+            }, 2000);
         }
 
         function setupSingleCopyLinks() {
@@ -319,6 +435,7 @@
 
         setupFilterPanel();
         setupCopyAllButton();
+        setupDownloadButton();
         setupSingleCopyLinks();
         scrollToBottom();
 
@@ -326,6 +443,7 @@
             const observeUpdates = debounce(() => {
                 setupFilterPanel();
                 setupCopyAllButton();
+                setupDownloadButton();
             }, 200);
 
             const observer = new MutationObserver(observeUpdates);

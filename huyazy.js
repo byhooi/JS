@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         虎牙/红牛资源复制全部
 // @namespace    http://github.com/byhooi
-// @version      1.4.0
-// @description  修复虎牙/红牛资源复制问题，支持复制链接、复制名称$链接、复制名称$链接$线路，悬浮面板配置关键词排除/仅保留并自动保存
+// @version      1.5.2
+// @description  修复虎牙/红牛资源复制问题，支持复制链接、复制名称$链接、复制名称$链接$线路，一键下载 m3u8 播放列表，悬浮面板配置关键词排除/仅保留并自动保存
 // @match        https://huyazy.com/index.php/vod/detail/id/*.html?ac=detail
 // @match        https://www.hongniuziyuan.com/index.php/vod/detail/id/*.html?ac=detail
 // @grant        GM_getValue
@@ -71,9 +71,9 @@
                 </style>
                 <div class="filter-header">
                     <strong>批量复制过滤</strong>
-                    <button type="button" id="huyazy-filter-toggle" aria-expanded="true" aria-controls="huyazy-filter-body">收起</button>
+                    <button type="button" id="huyazy-filter-toggle" aria-expanded="false" aria-controls="huyazy-filter-body">展开</button>
                 </div>
-                <div id="huyazy-filter-body">
+                <div id="huyazy-filter-body" hidden>
                     <label for="huyazy-filter-keyword">标题关键词</label>
                     <input type="text" id="huyazy-filter-keyword" placeholder="留空则不过滤" autocomplete="off">
                     <label for="huyazy-filter-mode">过滤方式</label>
@@ -124,22 +124,25 @@
             document.body.appendChild(panel);
         }
 
-        async function copyContent(content, button) {
+        function flashButton(button, text, color) {
             const originalText = button.value;
             const originalColor = button.style.backgroundColor;
-            try {
-                await navigator.clipboard.writeText(content);
-                button.value = '复制成功！';
-                button.style.backgroundColor = '#45a049';
-            } catch (err) {
-                console.error('复制失败:', err);
-                button.value = '复制失败';
-                button.style.backgroundColor = '#ff4444';
-            }
+            button.value = text;
+            if (color) button.style.backgroundColor = color;
             setTimeout(() => {
                 button.value = originalText;
                 button.style.backgroundColor = originalColor;
             }, 2000);
+        }
+
+        async function copyContent(content, button) {
+            try {
+                await navigator.clipboard.writeText(content);
+                flashButton(button, '复制成功！', '#45a049');
+            } catch (err) {
+                console.error('复制失败:', err);
+                flashButton(button, '复制失败', '#ff4444');
+            }
         }
 
         function styleButton(button) {
@@ -175,44 +178,115 @@
                     e.stopPropagation();
                     await copyLinks();
                 });
+
+                // 在复制按钮旁追加「下载M3U8」，复用同一套勾选与过滤规则
+                if (!document.getElementById('huyazy-download-m3u8')) {
+                    const downloadButton = document.createElement('input');
+                    downloadButton.type = 'button';
+                    downloadButton.id = 'huyazy-download-m3u8';
+                    downloadButton.value = '下载M3U8';
+                    styleButton(downloadButton);
+                    downloadButton.style.backgroundColor = '#2196F3';
+                    downloadButton.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        downloadPlaylist(downloadButton);
+                    });
+                    newCopy2Button.parentNode.insertBefore(downloadButton, newCopy2Button.nextSibling);
+                }
             }
         }
 
-        async function copyLinks() {
-            let content = '';
-            // 只处理 play_2 播放列表
+        // 按当前过滤设置，收集 play_2 中已勾选的条目
+        function collectEntries() {
+            const entries = [];
             const play2List = document.getElementById('play_2');
+            if (!play2List) return entries;
 
-            if (play2List) {
-                const items = play2List.querySelectorAll('input[name="copy_sel"]');
+            play2List.querySelectorAll('input[name="copy_sel"]').forEach((item) => {
+                if (!item.checked) return;
 
-                items.forEach((item) => {
-                    if (item.checked) {
-                        const link = item.value;
-                        const linkElement = item.nextElementSibling;
-                        const title = linkElement?.getAttribute('title') || linkElement?.textContent?.split('$')[0] || '';
+                const link = item.value;
+                const linkElement = item.nextElementSibling;
+                const title = linkElement?.getAttribute('title') || linkElement?.textContent?.split('$')[0] || '';
 
-                        // 根据配置排除匹配项，或反向过滤仅保留匹配项
-                        const matchesKeyword = title.includes(filterSettings.keyword);
-                        if (!filterSettings.keyword || (filterSettings.mode === 'include' ? matchesKeyword : !matchesKeyword)) {
-                            content += `${title}$${link}\n`;
-                        }
-                    }
-                });
-            }
+                // 根据配置排除匹配项，或反向过滤仅保留匹配项
+                const matchesKeyword = title.includes(filterSettings.keyword);
+                if (!filterSettings.keyword || (filterSettings.mode === 'include' ? matchesKeyword : !matchesKeyword)) {
+                    entries.push({ title, link });
+                }
+            });
+
+            return entries;
+        }
+
+        async function copyLinks() {
+            const entries = collectEntries();
+            const content = entries.map((entry) => `${entry.title}$${entry.link}\n`).join('');
 
             // 获取 copy2 按钮
             const targetButton = document.querySelector('#play_2 input.copy2');
             if (!targetButton) return;
 
             if (!content) {
-                const originalText = targetButton.value;
-                targetButton.value = '无符合条件的选中内容';
-                setTimeout(() => { targetButton.value = originalText; }, 2000);
+                flashButton(targetButton, '无符合条件的选中内容');
                 return;
             }
 
             await copyContent(content, targetButton);
+        }
+
+        function getPlaylistTitle() {
+            const selectors = [
+                'body > strong > div.warp > div:nth-child(1) > div > div > div.vodInfo > div.vodh > h2',
+                '.vodInfo .vodh h2',
+                'h2'
+            ];
+            for (const selector of selectors) {
+                const text = document.querySelector(selector)?.textContent?.trim();
+                if (text) return text;
+            }
+            return document.title;
+        }
+
+        function sanitizeFileName(name) {
+            const cleaned = String(name)
+                .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .replace(/[. ]+$/, '');
+            return (cleaned || 'playlist').slice(0, 80);
+        }
+
+        // 与 电影.py 输出格式保持一致：UTF-8、LF 换行、无 BOM
+        function buildPlaylistContent(entries) {
+            const lines = ['#EXTM3U'];
+            entries.forEach(({ title, link }) => {
+                const safeTitle = String(title).replace(/[\r\n]+/g, ' ').trim();
+                lines.push('', `#EXTINF:-1,${safeTitle}`, link);
+            });
+            return `${lines.join('\n')}\n`;
+        }
+
+        function downloadPlaylist(button) {
+            const entries = collectEntries();
+            if (!entries.length) {
+                flashButton(button, '无符合条件的选中内容');
+                return;
+            }
+
+            const blob = new Blob([buildPlaylistContent(entries)], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = `${sanitizeFileName(getPlaylistTitle())}.m3u8`;
+            anchor.style.display = 'none';
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+            flashButton(button, `已下载 ${entries.length} 条`, '#45a049');
         }
 
         function setupSingleCopyLinks() {

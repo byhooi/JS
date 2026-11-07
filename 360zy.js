@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         360zy 复制助手
 // @namespace    http://github.com/byhooi
-// @version      1.5.0
-// @description  在360zy.com视频详情页面添加复制按钮，提取剧集名称和播放链接，悬浮面板配置关键词排除/仅保留并自动保存
+// @version      1.6.0
+// @description  在360zy.com视频详情页面添加复制按钮与 m3u8 播放列表下载，提取剧集名称和播放链接，悬浮面板配置关键词排除/仅保留并自动保存
 // @match        https://360zy.com/voddetail/*.html
 // @grant        GM_setClipboard
 // @grant        GM_getValue
@@ -132,6 +132,65 @@
     if (CONFIG.DEBUG) console.log("[360zy.js]", ...args);
   }
 
+  // ===== m3u8 播放列表导出 =====
+
+  // 从 "标题$链接" 这类值里取出纯链接
+  function toUrl(value) {
+    const text = String(value || "").trim();
+    const index = text.lastIndexOf("$");
+    return (index >= 0 ? text.slice(index + 1) : text).trim();
+  }
+
+  // 页面标题里混着站点名和"剧情介绍"，先裁掉再用标题标签兜底
+  function getPlaylistTitle() {
+    let name = String(document.title || "").trim();
+    for (const marker of ["剧情介绍", " - ", "--", "_"]) {
+      const index = name.indexOf(marker);
+      if (index > 0) name = name.slice(0, index);
+    }
+    name = name.replace(/评分.*$/, "").replace(/\s+/g, " ").trim();
+    if (name) return name;
+
+    const headingText = document
+      .querySelector("h1, h2")
+      ?.textContent?.replace(/评分.*$/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    return headingText || "playlist";
+  }
+
+  function sanitizeFileName(name) {
+    const cleaned = String(name)
+      .replace(/[<>:"/\\|?*\x00-\x1F]/g, "_")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/[. ]+$/, "");
+    return (cleaned || "playlist").slice(0, 80);
+  }
+
+  // 与 电影.py 输出一致：#EXTM3U + 每项 EXTINF，UTF-8 / LF / 无 BOM
+  function buildPlaylistContent(entries) {
+    const lines = ["#EXTM3U"];
+    entries.forEach(({ title, link }) => {
+      const safeTitle = String(title || "").replace(/[\r\n]+/g, " ").trim();
+      lines.push("", `#EXTINF:-1,${safeTitle}`, link);
+    });
+    return `${lines.join("\n")}\n`;
+  }
+
+  function savePlaylist(entries) {
+    const blob = new Blob([buildPlaylistContent(entries)], { type: "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${sanitizeFileName(getPlaylistTitle())}.m3u8`;
+    anchor.style.display = "none";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+
   // 优先 Clipboard API，依次回退 GM_setClipboard、execCommand
   async function writeToClipboard(text) {
     if (!text || !text.trim()) {
@@ -187,6 +246,8 @@
     const button = document.createElement("button");
     button.textContent = "复制资源";
     button.id = "copy-resources-btn";
+    button.dataset.label = "复制资源";
+    button.dataset.baseColor = "#4CAF50";
     button.style.cssText = `
             padding: 6px 12px;
             background-color: #4CAF50;
@@ -255,7 +316,7 @@
       episodeText = episodeText.replace(/\$+$/, "");
       if (!matchesFilter(episodeText)) return;
 
-      result.push(`${episodeText} ${url}`.trim());
+      result.push({ title: episodeText, url: toUrl(url) });
     });
 
     return result;
@@ -267,8 +328,8 @@
     button.style.backgroundColor = color;
     button.disabled = true;
     setTimeout(() => {
-      button.textContent = "复制资源";
-      button.style.backgroundColor = "#4CAF50";
+      button.textContent = button.dataset.label || "复制资源";
+      button.style.backgroundColor = button.dataset.baseColor || "#4CAF50";
       button.disabled = false;
     }, CONFIG.RESET_DELAY);
   }
@@ -282,12 +343,69 @@
     }
 
     try {
-      await writeToClipboard(playItems.join("\r\n"));
+      const lines = playItems.map((item) => `${item.title} ${item.url}`.trim());
+      await writeToClipboard(lines.join("\r\n"));
       debug(`成功复制 ${playItems.length} 条资源信息`);
       showTempState(button, "已复制", "#45a049");
     } catch (error) {
       console.error("复制失败:", error);
       showTempState(button, error.message || "复制失败", "#dc3545");
+    }
+  }
+
+  function createDownloadButton() {
+    const button = document.createElement("button");
+    button.textContent = "下载M3U8";
+    button.id = "download-m3u8-btn";
+    button.dataset.label = "下载M3U8";
+    button.dataset.baseColor = "#2196F3";
+    button.style.cssText = `
+            padding: 6px 12px;
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background-color 0.3s;
+            margin: 5px 0 5px 8px;
+        `;
+
+    button.addEventListener("mouseenter", function () {
+      if (!button.disabled) button.style.backgroundColor = "#1976D2";
+    });
+
+    button.addEventListener("mouseleave", function () {
+      if (!button.disabled) button.style.backgroundColor = "#2196F3";
+    });
+
+    button.addEventListener("click", () => downloadPlaylist(button));
+
+    const listcountElement = document.querySelector(".listcount.col");
+    if (listcountElement) {
+      listcountElement.appendChild(button);
+    } else {
+      document.body.appendChild(button);
+    }
+    return button;
+  }
+
+  function downloadPlaylist(button) {
+    const playItems = extractPlayItems();
+
+    if (playItems.length === 0) {
+      showTempState(button, "没有符合条件的资源", "#ff9800");
+      return;
+    }
+
+    const entries = playItems.map((item) => ({ title: item.title, link: item.url }));
+    try {
+      savePlaylist(entries);
+      debug(`已导出 ${entries.length} 条到 m3u8`);
+      showTempState(button, `已下载 ${entries.length} 条`, "#45a049");
+    } catch (error) {
+      console.error("导出播放列表失败:", error);
+      showTempState(button, "导出失败", "#dc3545");
     }
   }
 
@@ -308,6 +426,7 @@
   function init() {
     setupFilterPanel();
     createCopyButton();
+    createDownloadButton();
     setTimeout(scrollToBottom, CONFIG.SCROLL_DELAY);
   }
 
