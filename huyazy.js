@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         虎牙/红牛资源复制全部
+// @name         虎牙/红牛资源下载
 // @namespace    http://github.com/byhooi
-// @version      1.5.2
-// @description  修复虎牙/红牛资源复制问题，支持复制链接、复制名称$链接、复制名称$链接$线路，一键下载 m3u8 播放列表，悬浮面板配置关键词排除/仅保留并自动保存
+// @version      1.6.0
+// @description  虎牙/红牛资源一键下载 m3u8 播放列表，悬浮面板配置关键词排除/仅保留并自动保存
 // @match        https://huyazy.com/index.php/vod/detail/id/*.html?ac=detail
 // @match        https://www.hongniuziyuan.com/index.php/vod/detail/id/*.html?ac=detail
 // @grant        GM_getValue
@@ -70,7 +70,7 @@
                     #huyazy-filter-panel [hidden] { display: none !important; }
                 </style>
                 <div class="filter-header">
-                    <strong>批量复制过滤</strong>
+                    <strong>下载过滤</strong>
                     <button type="button" id="huyazy-filter-toggle" aria-expanded="false" aria-controls="huyazy-filter-body">展开</button>
                 </div>
                 <div id="huyazy-filter-body" hidden>
@@ -81,7 +81,7 @@
                         <option value="exclude">排除包含关键词的条目</option>
                         <option value="include">仅保留包含关键词的条目</option>
                     </select>
-                    <p class="filter-hint">仅影响已勾选条目的批量复制，不影响单条复制。</p>
+                    <p class="filter-hint">仅影响已勾选条目的批量下载。</p>
                     <button type="button" id="huyazy-filter-clear">清空关键词</button>
                     <p class="filter-hint" id="huyazy-filter-status" role="status">更改立即生效并自动保存</p>
                 </div>
@@ -135,16 +135,6 @@
             }, 2000);
         }
 
-        async function copyContent(content, button) {
-            try {
-                await navigator.clipboard.writeText(content);
-                flashButton(button, '复制成功！', '#45a049');
-            } catch (err) {
-                console.error('复制失败:', err);
-                flashButton(button, '复制失败', '#ff4444');
-            }
-        }
-
         function styleButton(button) {
             button.style.cssText = `
                 padding: 6px 12px;
@@ -159,41 +149,32 @@
             `;
         }
 
-        function setupCopyButtons() {
-            // 查找 play_2 中的复制按钮
+        // 站点自带的「复制」按钮不再有用：它原本绑着 alert 弹窗，
+        // 脚本既不接管也就不该让它留在页面上误导用户。移除后只保留「下载M3U8」。
+        function setupDownloadButton() {
             const play2Container = document.getElementById('play_2');
             if (!play2Container) return;
+            if (document.getElementById('huyazy-download-m3u8')) return;
 
             const copy2Button = play2Container.querySelector('input.copy2');
 
+            const downloadButton = document.createElement('input');
+            downloadButton.type = 'button';
+            downloadButton.id = 'huyazy-download-m3u8';
+            downloadButton.value = '下载M3U8';
+            styleButton(downloadButton);
+            downloadButton.style.backgroundColor = '#2196F3';
+            downloadButton.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                downloadPlaylist(downloadButton);
+            });
+
             if (copy2Button) {
-                // 克隆按钮，以清除原网站绑定的事件（例如弹出 alert）
-                const newCopy2Button = copy2Button.cloneNode(true);
-                newCopy2Button.removeAttribute('onclick');
-                copy2Button.parentNode.replaceChild(newCopy2Button, copy2Button);
-
-                styleButton(newCopy2Button);
-                newCopy2Button.addEventListener('click', async function (e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    await copyLinks();
-                });
-
-                // 在复制按钮旁追加「下载M3U8」，复用同一套勾选与过滤规则
-                if (!document.getElementById('huyazy-download-m3u8')) {
-                    const downloadButton = document.createElement('input');
-                    downloadButton.type = 'button';
-                    downloadButton.id = 'huyazy-download-m3u8';
-                    downloadButton.value = '下载M3U8';
-                    styleButton(downloadButton);
-                    downloadButton.style.backgroundColor = '#2196F3';
-                    downloadButton.addEventListener('click', function (e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        downloadPlaylist(downloadButton);
-                    });
-                    newCopy2Button.parentNode.insertBefore(downloadButton, newCopy2Button.nextSibling);
-                }
+                copy2Button.parentNode.insertBefore(downloadButton, copy2Button);
+                copy2Button.remove();
+            } else {
+                play2Container.insertBefore(downloadButton, play2Container.firstChild);
             }
         }
 
@@ -218,22 +199,6 @@
             });
 
             return entries;
-        }
-
-        async function copyLinks() {
-            const entries = collectEntries();
-            const content = entries.map((entry) => `${entry.title}$${entry.link}\n`).join('');
-
-            // 获取 copy2 按钮
-            const targetButton = document.querySelector('#play_2 input.copy2');
-            if (!targetButton) return;
-
-            if (!content) {
-                flashButton(targetButton, '无符合条件的选中内容');
-                return;
-            }
-
-            await copyContent(content, targetButton);
         }
 
         function getPlaylistTitle() {
@@ -289,38 +254,6 @@
             flashButton(button, `已下载 ${entries.length} 条`, '#45a049');
         }
 
-        function setupSingleCopyLinks() {
-            document.addEventListener('click', async function (event) {
-                const target = event.target;
-                // 查找播放列表项的标签
-                if (target.matches('label') && target.previousElementSibling?.type === 'checkbox') {
-                    const onclick = target.getAttribute('onclick');
-
-                    if (onclick) {
-                        const match = onclick.match(/player\('([^']+)'\)/);
-                        if (match) {
-                            const link = match[1];
-                            const title = target.textContent?.trim() || '';
-
-                            // 创建临时复制按钮
-                            const tempButton = document.createElement('input');
-                            tempButton.type = 'button';
-                            tempButton.value = '复制';
-                            styleButton(tempButton);
-
-                            target.parentNode.insertBefore(tempButton, target.nextSibling);
-
-                            await copyContent(`${title}$${link}`, tempButton);
-
-                            setTimeout(() => {
-                                tempButton.remove();
-                            }, 2000);
-                        }
-                    }
-                }
-            });
-        }
-
         function scrollToBottom() {
             // 滚动页面到底部
             window.scrollTo({
@@ -337,8 +270,7 @@
         }
 
         setupFilterPanel();
-        setupCopyButtons();
-        setupSingleCopyLinks();
+        setupDownloadButton();
 
         // 延迟滚动以确保所有内容都已加载
         setTimeout(scrollToBottom, 1000);
